@@ -1,0 +1,5 @@
+{
+  "cmake.sourceDirectory": "C:/Projects/AgenTest/agent-sut/state",
+  "cmake.buildDirectory": "${workspaceFolder}/agent-sut/build",
+  "cmake.configureOnOpen": true
+}
