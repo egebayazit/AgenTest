@@ -1,0 +1,6 @@
+// ...existing code...
+#pragma once
+#include <string>
+
+std::string base64_encode(const unsigned char* bytes, size_t len);
+// ...existing code...
