@@ -1,0 +1,24 @@
+{
+  "screen": {
+    "w": 1920,
+    "h": 1200,
+    "dpiX": 120,
+    "dpiY": 120
+  },
+  "elements": [],
+  "meta": {
+    "filtered": true,
+    "total_in": 39,
+    "total_out": 0,
+    "filters": [
+      "validRect>=16x16",
+      "actionable",
+      "activeWindowPref",
+      "dedup(iou>=0.85)",
+      "enabledFirst",
+      "scoreSort",
+      "top200"
+    ],
+    "hint_used": false
+  }
+}

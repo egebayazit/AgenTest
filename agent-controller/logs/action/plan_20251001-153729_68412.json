@@ -1,0 +1,47 @@
+{
+  "action_id": "step_171234567890",
+  "coords_space": "physical",
+  "steps": [
+    {
+      "type": "key_combo",
+      "combo": [
+        "win"
+      ]
+    },
+    {
+      "type": "wait",
+      "ms": 300
+    },
+    {
+      "type": "wait",
+      "ms": 250
+    },
+    {
+      "type": "type",
+      "text": "Google Chrome",
+      "delay_ms": 25,
+      "enter": true
+    },
+    {
+      "type": "wait",
+      "ms": 2000
+    },
+    {
+      "type": "type",
+      "text": "https://www.google.com",
+      "delay_ms": 25,
+      "enter": true
+    },
+    {
+      "type": "wait",
+      "ms": 2000
+    },
+    {
+      "type": "type",
+      "text": "weather in Ankara",
+      "delay_ms": 25,
+      "enter": true
+    }
+  ],
+  "reasoning": "No UI elements available; using keyboard shortcuts to open Chrome via Start menu, navigating to google.com, and searching for weather in Ankara."
+}

@@ -1,0 +1,60 @@
+{
+  "action_id": "step_1712345678",
+  "coords_space": "physical",
+  "steps": [
+    {
+      "type": "key_combo",
+      "combo": [
+        "win",
+        "i"
+      ]
+    },
+    {
+      "type": "wait",
+      "ms": 300
+    },
+    {
+      "type": "wait",
+      "ms": 500
+    },
+    {
+      "type": "key_combo",
+      "combo": [
+        "tab"
+      ]
+    },
+    {
+      "type": "wait",
+      "ms": 300
+    },
+    {
+      "type": "wait",
+      "ms": 200
+    },
+    {
+      "type": "key_combo",
+      "combo": [
+        "down"
+      ]
+    },
+    {
+      "type": "wait",
+      "ms": 300
+    },
+    {
+      "type": "wait",
+      "ms": 200
+    },
+    {
+      "type": "key_combo",
+      "combo": [
+        "enter"
+      ]
+    },
+    {
+      "type": "wait",
+      "ms": 300
+    }
+  ],
+  "reasoning": "No UI elements available; using Win+I to open Settings, then navigating with Tab, Down Arrow, and Enter to select Personalization and Themes."
+}
