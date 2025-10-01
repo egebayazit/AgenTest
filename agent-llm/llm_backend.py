@@ -22,12 +22,11 @@ import time
 import logging
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, List
-
 import requests
+from plan_utils import sanitize_plan_dict, validate_plan_or_raise
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agentest.llm_backend")
-
 
 # ---------- Data Models ----------
 
@@ -70,20 +69,14 @@ class LLMBackend:
     # ----- Prompt spec -----
 
     def _build_system_prompt(self) -> str:
-        """
-        System instructions for the planner model.
-        Keep it concise but strict about: using only elements from state,
-        returning valid JSON, and sticking to allowed action schema.
-        """
         return (
         "ROLE: You are an expert Windows UI automation PLANNER.\n"
         "INPUTS: (a) test step, (b) expected result, (c) CURRENT UI STATE (elements with rects).\n"
-        "TASK: Produce a VALID JSON action plan using ONLY elements present in the state.\n"
+        "TASK: Produce a VALID JSON action plan using ONLY elements present in the state OR keyboard shortcuts when no element matches.\n"
         "HARD RULES:\n"
         "- Return ONE JSON OBJECT only. No markdown fences, no commentary, no role tags.\n"
-        "- Do NOT include keys like 'commentary', 'thoughts', 'assistant', or channels.\n"
-        "- Do NOT invent coordinates; use element rects from state.\n"
-        "- Prefer enabled + active-window elements. Use key combos ONLY if no element matches.\n"
+        "- Do NOT invent coordinates; always use element rects from state when clicking.\n"
+        "- Prefer enabled + active-window elements. If no UI element matches, you MUST use keyboard-only steps.\n"
         "OUTPUT SCHEMA (exact keys):\n"
         "{\n"
         '  "action_id": "step_<timestamp>",\n'
@@ -95,17 +88,31 @@ class LLMBackend:
         '- CLICK: {"type":"click","button":"left|right|middle","click_count":1,'
         '"modifiers":["ctrl","shift","alt","win"],'
         '"target":{"rect":{"x":100,"y":100,"w":80,"h":30}}}\n'
-        '- TYPE: {"type":"type","text":"...","delay_ms":10,"enter":false}\n'
-        '- KEY_COMBO: {"type":"key_combo","combo":["ctrl","s"]}\n'
+        '- TYPE: {"type":"type","text":"...","delay_ms":10,"enter":false}  // set enter=true to press Enter after typing\n'
+        '- KEY_COMBO: {"type":"key_combo","combo":["win","s"]}\n'
+        "  Allowed keys in combo: ctrl, shift, alt, win, enter, tab, esc, backspace, delete, home, end,\n"
+        "  pageup, pagedown, up, down, left, right, f1..f12, a..z, 0..9.\n"
         '- DRAG: {"type":"drag","from":{"x":..,"y":..},"to":{"x":..,"y":..},"button":"left","hold_ms":120}\n'
         '- SCROLL: {"type":"scroll","delta":-240,"horizontal":false,"at":{"x":800,"y":600}}\n'
         '- MOVE: {"type":"move","point":{"x":..,"y":..},"settle_ms":150}\n'
         '- WAIT: {"type":"wait","ms":300}\n'
-        "REMINDERS:\n"
-        "- Use rect center for clicks. Never guess coordinates.\n"
-        "- If no candidate element matches, explain why in 'reasoning' and use a suitable key combo.\n"
-        "- Again: output MUST be a single, valid JSON object with the schema above."
-        )
+        "SELECTION RULES:\n"
+        "1) Search all elements; prefer enabled + visible ones.\n"
+        "2) Use rect CENTER for clicks; never guess coordinates.\n"
+        "3) If NO suitable element exists for the step, produce a KEYBOARD-ONLY plan.\n"
+        "EXAMPLE (no Start element in state, open Settings via search):\n"
+        "{\n"
+        '  "action_id":"step_<timestamp>",\n'
+        '  "coords_space":"physical",\n'
+        '  "steps":[\n'
+        '    {"type":"key_combo","combo":["win","s"]},\n'
+        '    {"type":"wait","ms":250},\n'
+        '    {"type":"type","text":"Settings","delay_ms":10,"enter":true}\n'
+        '  ],\n'
+        '  "reasoning":"No Start button element; using Win+S search, typing Settings, confirming with Enter."\n'
+        "}\n"
+        "Return ONLY the JSON object."
+    )
 
     # ----- SUT I/O -----
 
@@ -311,7 +318,7 @@ class LLMBackend:
         )
         return ctx
 
-    def call_llm(self, test_step: TestStep, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def call_llm(self, test_step: TestStep, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:        
         """Get an action plan JSON from the LLM."""
         try:
             context = self.prepare_llm_context(test_step, state)
@@ -320,22 +327,23 @@ class LLMBackend:
                 {"role": "user", "content": [{"type": "text", "text": context}]},
             ]
             raw = self._call_openrouter(messages)
-            # Eğer LLM reasoning/refusal döndürdüyse, kullanıcıya göster ve None dön
+
+            # Reasoning / refusal fallback
             if raw.startswith("LLM reasoning:") or raw.startswith("LLM refusal:"):
                 logger.error(f"LLM did not return content. {raw}")
                 return None
+
             raw = self._strip_code_fence(raw)
             plan = self._best_effort_json(raw)
             if not plan or not isinstance(plan, dict):
                 logger.error("Failed to parse LLM JSON. Raw:\n%s", raw[:800])
                 return None
-            # Optional: very light normalization
-            plan.setdefault("action_id", f"step_{int(time.time())}")
-            plan.setdefault("coords_space", "physical")
-            plan.setdefault("steps", [])
+
+            plan = sanitize_plan_dict(plan)
+            validate_plan_or_raise(plan)  # mismatch olursa ValidationError fırlatır
             return plan
         except Exception as e:
-            logger.error("LLM call failed: %s", e)
+            logger.error(f"LLM call failed: {e}")
             return None
 
     def verify_result(

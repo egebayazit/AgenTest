@@ -6,6 +6,7 @@ This folder contains the **LLM side** of AgenTest: a minimal, local-first stack 
 - `ui.py` — Streamlit UI (enter one step, run, view logs & result).
 - `llm_service.py` — FastAPI HTTP service wrapping the backend (`/healthz`, `/plan_step`, `/run_step`, plus optional `/state`, `/action` proxies).
 - `llm_backend.py` — Core orchestration: **SUT `/state` → LLM prompt → action plan → SUT `/action` → SUT `/state` → heuristic verify**.
+- `plan_utils.py` — LLM'den gelen action planlarını normalize eden, doğrulayan ve SUT'a güvenli şekilde iletilmesini sağlayan güvenlik/guardrail katmanı. (Tüm action planları burada schema'ya uygun hale getirilir, hatalı adımlar filtrelenir, timing guardrails eklenir.)
 - `requirements.txt` — Python dependencies.
 - `.env` — Environment variables (OpenRouter key, model, SUT URLs, service base URL).
 
@@ -14,6 +15,7 @@ This folder contains the **LLM side** of AgenTest: a minimal, local-first stack 
 ├─ ui.py              # Streamlit UI
 ├─ llm_service.py     # FastAPI app (HTTP API)
 ├─ llm_backend.py     # Orchestration (SUT + LLM + verify)
+├─ plan_utils.py      # Action plan security/guardrail layer
 ├─ requirements.txt   # Dependencies
 └─ .env               # Local config (see example)
 ``` 
