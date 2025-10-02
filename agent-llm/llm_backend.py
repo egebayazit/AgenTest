@@ -23,7 +23,6 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, List
 import requests
-from plan_utils import sanitize_plan_dict, validate_plan_or_raise
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agentest.llm_backend")
@@ -116,18 +115,17 @@ class LLMBackend:
 
     # ----- SUT I/O -----
 
-    def get_state_from_sut(self) -> Optional[Dict[str, Any]]:
-        """Retrieve current UI state from SUT (/state)."""
+    def get_state_from_controller(self, hint: str | None = None) -> Optional[Dict[str, Any]]:
+        """Retrieve current UI state from Controller-SUT (/state)."""
         try:
+            payload = {"hint": hint} if hint else {}
             r = self.session.post(
                 self.config.sut_state_url,
-                json={},
+                json=payload,                       # <— boş {} yerine payload
                 timeout=(self.config.timeout_connect, self.config.timeout_read),
             )
             r.raise_for_status()
-            state = r.json()
-            logger.info("SUT state: %d elements", len(state.get("elements", [])))
-            return state
+            return r.json()
         except Exception as e:
             logger.error("SUT /state failed: %s", e)
             return None
@@ -339,8 +337,10 @@ class LLMBackend:
                 logger.error("Failed to parse LLM JSON. Raw:\n%s", raw[:800])
                 return None
 
-            plan = sanitize_plan_dict(plan)
-            validate_plan_or_raise(plan)  # mismatch olursa ValidationError fırlatır
+            # burada sadece hafif default ver, sanitizasyon yok
+            plan.setdefault("action_id", f"step_{int(time.time())}")
+            plan.setdefault("coords_space", "physical")
+            plan.setdefault("steps", [])
             return plan
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
@@ -394,7 +394,7 @@ class LLMBackend:
 
         log_line("Starting test execution")
         log_line("Step 1: Fetching SUT state")
-        before = self.get_state_from_sut()
+        before = self.get_state_from_controller()
         if not before:
             result["actual"] = "Failed to fetch SUT state"
             return result
@@ -415,7 +415,7 @@ class LLMBackend:
         time.sleep(0.5)
 
         log_line("Step 5: Fetching SUT state again and verifying")
-        after = self.get_state_from_sut()
+        after = self.get_state_from_controller()
         if not after:
             result["actual"] = "Failed to fetch SUT state after action"
             return result

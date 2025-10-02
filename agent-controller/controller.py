@@ -24,9 +24,9 @@ from typing import Any, Dict, Optional
 
 import requests
 from fastapi import FastAPI, HTTPException, Body
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-from filter_utils import filter_pipeline_v1, guard_action_plan_v1
+from filter_utils import filter_pipeline_v1,process_plan_v1 
 
 REAL_SUT_STATE = os.getenv("REAL_SUT_STATE", "http://127.0.0.1:18080/state")
 REAL_SUT_ACTION = os.getenv("REAL_SUT_ACTION", "http://127.0.0.1:18080/action")
@@ -121,7 +121,7 @@ def action_proxy(plan: Dict[str, Any]):
     if LOG_SNAPSHOTS:
         _write_json(ACTION_DIR / _snap_name("plan"), plan)
 
-    # 2) reasoning’i ayrı logla (human-friendly)
+    # 2) reasoning’i ayrı logla
     if LOG_THOUGHTS:
         try:
             rid = plan.get("action_id") or "-"
@@ -136,11 +136,11 @@ def action_proxy(plan: Dict[str, Any]):
         except Exception:
             pass
 
-    # 3) guardrails
+    # 3) Plan’ı Controller tarafında tek kapıdan geçir
     try:
-        safe_plan = guard_action_plan_v1(plan)
-    except ValueError as ve:
-        raise HTTPException(400, f"plan guard failed: {ve}")
+        safe_plan = process_plan_v1(plan)
+    except (ValidationError, ValueError) as e:
+        raise HTTPException(400, f"invalid plan: {e}")
 
     # 4) SUT’a ilet
     try:

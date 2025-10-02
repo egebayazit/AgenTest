@@ -1,16 +1,17 @@
 # filter_utils.py
-# v1 filtering for SUT state (no ODS)
-# Goals:
-# - shrink element list for LLM
-# - keep actionable/visible items
-# - dedup similar nodes
-# - (optional) bias ordering with a simple hint
+# v1 Controller utilities (no ODS):
+# - State filtering for LLM
+# - Plan sanitize + validate + guardrails before forwarding to SUT
 
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Literal
 import math
+import time
+from pydantic import BaseModel, Field, ValidationError
 
-# --- basic helpers ---
+# =========================
+# State filtering (v1)
+# =========================
 
 ACTIONABLE_TYPES = {
     "Button", "MenuItem", "Hyperlink", "Edit", "ComboBox", "ListItem",
@@ -38,30 +39,21 @@ def _valid_rect(e: Dict[str, Any]) -> bool:
 def _actionable(e: Dict[str, Any]) -> bool:
     t = (e.get("controlType") or "").strip()
     name = (e.get("name") or "").strip()
-    if t in ACTIONABLE_TYPES:
-        return True
-    # allow unlabeled Edit fields (often actionable)
-    if t == "Edit":
-        return True
-    # fallback: named item with reasonable rect
+    if t in ACTIONABLE_TYPES: return True
+    if t == "Edit": return True
     return bool(name)
 
 def _score_element(e: Dict[str, Any], hint: Optional[str]) -> float:
-    # simple scoring: enabled + active window + name length + hint keyword hits
     score = 0.0
     if e.get("enabled"): score += 2.0
     if e.get("windowActive"): score += 2.0
     name = (e.get("name") or "").lower()
     path = " > ".join((e.get("path") or []))[:200].lower()
-
-    score += min(len(name)/20.0, 2.0)  # cap name contribution
+    score += min(len(name)/20.0, 2.0)
     if hint:
         h = hint.lower()
-        # naive token match
         hits = sum(1 for tok in h.split() if tok and (tok in name or tok in path))
         score += min(hits * 0.8, 3.0)
-
-    # slightly prefer center-ish items (less tiny/edge noise)
     r = e.get("rect") or {}
     area = _area(r)
     score += min(math.log1p(area) / 6.0, 2.0)
@@ -74,51 +66,35 @@ def _dedup(elements: List[Dict[str, Any]], iou_thr: float = 0.85) -> List[Dict[s
         is_dup = False
         for k in kept:
             if _iou(r, k.get("rect") or {}) >= iou_thr and (e.get("name") or "").lower() == (k.get("name") or "").lower():
-                # prefer enabled/active with longer name
                 cand = max([e, k], key=lambda x: (x.get("enabled"), x.get("windowActive"), len((x.get("name") or ""))))
-                # replace if better
                 if cand is e:
-                    kept.remove(k)
-                    kept.append(e)
+                    kept.remove(k); kept.append(e)
                 is_dup = True
                 break
         if not is_dup:
             kept.append(e)
     return kept
 
-# --- public API ---
-
 def filter_pipeline_v1(state: Dict[str, Any], hint: Optional[str] = None, top_n: int = 200) -> Dict[str, Any]:
-    """Apply v1 filters to SUT state and return a trimmed version."""
     screen = state.get("screen") or {}
     elems = state.get("elements") or []
     if not isinstance(elems, list):
         elems = []
 
-    # 1) drop invalid rects and tiny items
     pool = [e for e in elems if _valid_rect(e)]
-
-    # 2) actionable-only
     pool = [e for e in pool if _actionable(e)]
-
-    # 3) prefer active window
     active = [e for e in pool if e.get("windowActive")]
     pool = active if active else pool
-
-    # 4) dedup by (name + IoU)
     pool = _dedup(pool, iou_thr=0.85)
 
-    # 5) enabled first
     enabled = [e for e in pool if e.get("enabled")]
     disabled = [e for e in pool if not e.get("enabled")]
     pool = enabled + disabled
 
-    # 6) score & sort
     scored = [(e, _score_element(e, hint)) for e in pool]
     scored.sort(key=lambda t: t[1], reverse=True)
     pool = [e for e, _ in scored][:top_n]
 
-    # 7) return with meta
     out = {
         "screen": {k: screen.get(k) for k in ("w", "h", "dpiX", "dpiY") if k in screen},
         "elements": pool,
@@ -132,23 +108,200 @@ def filter_pipeline_v1(state: Dict[str, Any], hint: Optional[str] = None, top_n:
     }
     return out
 
+# =========================
+# Plan sanitize + validate + guard
+# =========================
+
+# ---- Allowed keys for key_combo ----
+_ALPHAS = [chr(c) for c in range(ord('a'), ord('z') + 1)]
+_DIGITS = list("0123456789")
+_FN = [f"f{i}" for i in range(1, 13)]
+_NAV = ["up", "down", "left", "right", "home", "end", "pageup", "pagedown"]
+_MOD = ["ctrl", "shift", "alt", "win"]
+_OTHER = ["enter", "tab", "esc", "backspace", "delete"]
+_ALLOWED_KEYS = set(_ALPHAS + _DIGITS + _FN + _NAV + _MOD + _OTHER)
+_SYNONYMS = {
+    "control": "ctrl",
+    "return": "enter",
+    "escape": "esc",
+    "pgup": "pageup",
+    "pgdn": "pagedown",
+    "del": "delete",
+    "bksp": "backspace",
+}
+
+# ---- Schema models (Pydantic) ----
+class Rect(BaseModel):
+    x: int; y: int; w: int; h: int
+
+class ClickTarget(BaseModel):
+    rect: Rect
+
+class Click(BaseModel):
+    type: Literal["click"]
+    button: Literal["left", "right", "middle"] = "left"
+    click_count: int = 1
+    modifiers: List[str] = []
+    target: ClickTarget
+
+class TypeAct(BaseModel):
+    type: Literal["type"]
+    text: str
+    delay_ms: int = 30
+    enter: bool = False
+
+class KeyCombo(BaseModel):
+    type: Literal["key_combo"]
+    combo: List[str]
+
+class Drag(BaseModel):
+    type: Literal["drag"]
+    from_: Dict[str, int] = Field(..., alias="from")
+    to: Dict[str, int]
+    button: Literal["left", "right", "middle"] = "left"
+    hold_ms: int = 120
+
+class Scroll(BaseModel):
+    type: Literal["scroll"]
+    delta: int
+    horizontal: bool = False
+    at: Optional[Dict[str, int]] = None
+
+class Move(BaseModel):
+    type: Literal["move"]
+    point: Dict[str, int]
+    settle_ms: int = 150
+
+class Wait(BaseModel):
+    type: Literal["wait"]
+    ms: int
+
+Action = Click | TypeAct | KeyCombo | Drag | Scroll | Move | Wait
+
+class Plan(BaseModel):
+    action_id: str
+    coords_space: Literal["physical"]
+    steps: List[Action]
+    reasoning: str
+
+def _normalize_combo(keys: Any) -> List[str]:
+    if isinstance(keys, str):
+        keys = [keys]
+    if not isinstance(keys, list):
+        return []
+    norm: List[str] = []
+    for k in keys:
+        if not isinstance(k, str): continue
+        kk = _SYNONYMS.get(k.lower().strip(), k.lower().strip())
+        if kk in _ALLOWED_KEYS:
+            norm.append(kk)
+    seen = set(); out: List[str] = []
+    for k in norm:
+        if k not in seen:
+            out.append(k); seen.add(k)
+    return out
+
+def sanitize_plan_dict(plan: Dict[str, Any]) -> Dict[str, Any]:
+    p = dict(plan)
+    p.setdefault("action_id", f"step_{int(time.time())}")
+    p.setdefault("coords_space", "physical")
+
+    steps = p.get("steps")
+    if not isinstance(steps, list):
+        steps = []
+    fixed: List[Dict[str, Any]] = []
+
+    for s in steps:
+        if not isinstance(s, dict): continue
+        t = s.get("type")
+        if t == "click":
+            tgt = s.get("target", {})
+            rect = tgt.get("rect") if isinstance(tgt, dict) else None
+            if not isinstance(rect, dict): continue
+            try:
+                rect = {"x": int(rect["x"]),"y": int(rect["y"]),
+                        "w": max(1, int(rect["w"])),"h": max(1, int(rect["h"]))}
+            except Exception:
+                continue
+            s["button"] = s.get("button", "left")
+            s["click_count"] = int(s.get("click_count", 1))
+            s["modifiers"] = [m.lower() for m in s.get("modifiers", []) if isinstance(m, str)]
+            s["target"] = {"rect": rect}
+            fixed.append(s)
+        elif t == "type":
+            txt = s.get("text", "")
+            if not isinstance(txt, str): txt = str(txt)
+            s["text"] = txt
+            s["delay_ms"] = max(25, int(s.get("delay_ms", 30)))
+            s["enter"] = bool(s.get("enter", False))
+            fixed.append(s)
+        elif t == "key_combo":
+            combo = _normalize_combo(s.get("combo", []))
+            if combo:
+                s["combo"] = combo
+                fixed.append(s)
+        elif t == "drag":
+            fr = s.get("from"); to = s.get("to")
+            if isinstance(fr, dict) and isinstance(to, dict):
+                try:
+                    s["from"] = {"x": int(fr["x"]), "y": int(fr["y"])}
+                    s["to"] = {"x": int(to["x"]), "y": int(to["y"])}
+                    s["button"] = s.get("button", "left")
+                    s["hold_ms"] = int(s.get("hold_ms", 120))
+                    fixed.append(s)
+                except Exception:
+                    pass
+        elif t == "scroll":
+            try:
+                s["delta"] = int(s.get("delta", 0))
+                s["horizontal"] = bool(s.get("horizontal", False))
+                at = s.get("at")
+                if isinstance(at, dict) and "x" in at and "y" in at:
+                    s["at"] = {"x": int(at["x"]), "y": int(at["y"])}
+                else:
+                    s.pop("at", None)
+                fixed.append(s)
+            except Exception:
+                pass
+        elif t == "move":
+            pt = s.get("point")
+            if isinstance(pt, dict) and "x" in pt and "y" in pt:
+                s["point"] = {"x": int(pt["x"]), "y": int(pt["y"])}
+                s["settle_ms"] = int(s.get("settle_ms", 150))
+                fixed.append(s)
+        elif t == "wait":
+            try:
+                s["ms"] = max(50, int(s.get("ms", 300)))
+                fixed.append(s)
+            except Exception:
+                pass
+        # unknown types -> drop
+
+    # Guardrails: wait after combo; click→type spacer
+    guarded: List[Dict[str, Any]] = []
+    for i, s in enumerate(fixed):
+        guarded.append(s)
+        if s.get("type") == "key_combo":
+            guarded.append({"type": "wait", "ms": 300})
+        if s.get("type") == "click":
+            nxt = fixed[i + 1] if i + 1 < len(fixed) else None
+            if nxt and nxt.get("type") == "type":
+                guarded.append({"type": "wait", "ms": 200})
+
+    p["steps"] = guarded
+    p.setdefault("reasoning", "")
+    return p
+
+def validate_plan_or_raise(plan: Dict[str, Any]) -> Plan:
+    return Plan.model_validate(plan)
+
 def guard_action_plan_v1(plan: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Light guardrails for /action:
-    - limit number of steps
-    - ensure wait bounds
-    - prevent insane scroll/drag deltas
-    - TODO: deep schema validation if needed
-    """
-    if not isinstance(plan, dict):
-        raise ValueError("plan must be an object")
-    steps = plan.get("steps")
+    # light runtime bounds
+    steps = plan.get("steps", [])
     if not isinstance(steps, list):
         raise ValueError("plan.steps must be an array")
-
-    MAX_STEPS = 50
-    if len(steps) > MAX_STEPS:
-        raise ValueError(f"too many steps ({len(steps)} > {MAX_STEPS})")
+    if len(steps) > 50:
+        raise ValueError(f"too many steps ({len(steps)} > 50)")
 
     safe = []
     for s in steps:
@@ -159,11 +312,15 @@ def guard_action_plan_v1(plan: Dict[str, Any]) -> Dict[str, Any]:
         elif t == "scroll":
             delta = int(s.get("delta", 0))
             s["delta"] = max(-1200, min(delta, 1200))
-        elif t == "drag":
-            # (basic) allow as-is; could clamp coordinates here if needed
-            pass
-        # keep others
         safe.append(s)
-
     plan["steps"] = safe
     return plan
+
+def process_plan_v1(plan: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Controller-side single entrypoint:
+    LLM raw plan -> sanitize -> validate -> guard -> safe plan
+    """
+    sanitized = sanitize_plan_dict(plan)
+    validate_plan_or_raise(sanitized)
+    return guard_action_plan_v1(sanitized)

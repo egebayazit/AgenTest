@@ -58,7 +58,7 @@ SUT_STATE_URL=http://127.0.0.1:18080/state
 SUT_ACTION_URL=http://127.0.0.1:18080/action
 
 # UI -> Service
-LLM_SERVICE_BASE=http://127.0.0.1:19090
+LLM_SERVICE_BASE=http://127.0.0.1:18081
 ``` 
 
 ## 4 Run 
@@ -66,10 +66,10 @@ LLM_SERVICE_BASE=http://127.0.0.1:19090
 **Start the service (FastAPI)**
 
 ``` bash
-uvicorn llm_service:app --host 0.0.0.0 --port 19090 --reload
+uvicorn llm_service:app --host 0.0.0.0 --port 18081 --reload
 ```
 
-Docs: http://127.0.0.1:19090/docs
+Docs: http://127.0.0.1:18081/docs
 
 Health: GET /healthz
 
