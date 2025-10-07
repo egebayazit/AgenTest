@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"C:/Projects/AgenTest/agent-sut/build/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

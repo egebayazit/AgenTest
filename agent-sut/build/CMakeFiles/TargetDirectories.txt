@@ -1,3 +1,0 @@
-C:/Projects/AgenTest/agent-sut/build/CMakeFiles/agent_sut.dir
-C:/Projects/AgenTest/agent-sut/build/CMakeFiles/ALL_BUILD.dir
-C:/Projects/AgenTest/agent-sut/build/CMakeFiles/ZERO_CHECK.dir
