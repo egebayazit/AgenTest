@@ -1,0 +1,16 @@
+# server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# http client(s)
+httpx>=0.28.1
+requests>=2.32.3
+
+# config
+python-dotenv>=1.0.1
+
+# typing/runtime (fastapi+pydantic v2 uyumu)
+pydantic>=2.7,<3
+
+# ui
+streamlit>=1.36.0
