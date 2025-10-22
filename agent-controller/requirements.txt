@@ -1,0 +1,12 @@
+fastapi==0.115.3
+uvicorn[standard]==0.30.6
+httpx==0.28.1
+python-dotenv==1.1.1
+
+# OCR + Icon (YOLO) için ek bağımlılıklar
+ultralytics==8.3.214
+pytesseract==0.3.10
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+Pillow==10.4.0
+python-multipart==0.0.9
