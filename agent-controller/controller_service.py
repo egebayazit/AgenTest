@@ -1,7 +1,7 @@
 # controller_service.py
 from __future__ import annotations
 
-import os, re, io, base64, time, unicodedata, hashlib
+import os, re, io, base64, time, unicodedata, hashlib, html
 from typing import Any, Dict, List, Tuple, Optional
 import concurrent.futures as cf
 import multiprocessing
@@ -35,6 +35,8 @@ LLM_RUN_URL = os.getenv("LLM_RUN_URL")
 SUT_TIMEOUT_SEC = int(os.getenv("SUT_TIMEOUT_SEC", "45"))
 
 DEDUPE_KEY_MODE = os.getenv("DEDUPE_KEY_MODE", "name").lower()
+INCLUDE_DUPLICATES_FOR_LLM = os.getenv("INCLUDE_DUPLICATES_FOR_LLM", "1") in ("1","true","True")
+
 
 # OCR config
 TESSERACT_CMD = os.getenv("TESSERACT_CMD")
@@ -107,7 +109,7 @@ ICON_NAME_SEMANTICS: Dict[str, str] = {
 }
 
 APP_NAME = "AgenTest Controller"
-APP_VER = "0.17.0-jvm-normalize+llm-minimal"
+APP_VER = "0.17.1-jvm-normalize+llm-minimal"
 
 STRIP_FIELDS = {"controlType", "enabled", "patterns", "idx"}
 
@@ -187,6 +189,15 @@ def _iou(a: Dict[str, int], b: Dict[str, int]) -> float:
 # -------------------- names --------------------
 _ZW_REMOVE = {"Cf"}
 _ws_re = re.compile(r"\s+", re.UNICODE)
+_html_tag_re = re.compile(r"<[^>]+>")
+
+def _strip_html_basic(s: str) -> str:
+    if not s:
+        return ""
+    s = html.unescape(s)
+    s = _html_tag_re.sub(" ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
 def _canonical_name(name: str) -> str:
     s = (name or "").strip()
@@ -280,14 +291,37 @@ def _too_thin_line(rect: Dict[str, Any], scr_w: int) -> bool:
     return False
 
 def _pad_and_crop(img: Image.Image, rect: Dict[str, Any]) -> Image.Image:
-    l = max(0, int(rect.get("l", 0)))
-    t = max(0, int(rect.get("t", 0)))
-    r = max(l + 1, int(rect.get("r", 0)))
-    b = max(t + 1, int(rect.get("b", 0)))
-    if RECT_PAD_PX > 0:
-        l = max(0, l - RECT_PAD_PX); t = max(0, t - RECT_PAD_PX)
-        r = min(img.width,  r + RECT_PAD_PX); b = min(img.height, b + RECT_PAD_PX)
+    # sanitize & clamp
+    img_w, img_h = int(img.width), int(img.height)
+
+    try:
+        l = int(rect.get("l", 0)); t = int(rect.get("t", 0))
+        r = int(rect.get("r", l + 1)); b = int(rect.get("b", t + 1))
+    except Exception:
+        # rect sayı değilse, tüm resmi döndür
+        return img
+
+    # ensure basic ordering
+    if r <= l: r = l + 1
+    if b <= t: b = t + 1
+
+    # padding
+    pad = max(0, int(RECT_PAD_PX))
+    l = max(0, l - pad); t = max(0, t - pad)
+    r = r + pad; b = b + pad
+
+    # clamp to image bounds (ve ordering’i tekrar garanti et)
+    l = min(max(0, l), max(0, img_w - 1))
+    t = min(max(0, t), max(0, img_h - 1))
+    r = min(max(l + 1, r), img_w)
+    b = min(max(t + 1, b), img_h)
+
+    # güvenlik: yine de anormalse tüm resmi ver
+    if r <= l or b <= t:
+        return img
+
     return img.crop((l, t, r, b))
+
 
 # mojibake fix & post-normalize
 _MOJI_FIXES = {
@@ -330,7 +364,7 @@ def _ocr_try(crop: Image.Image, shash: str, lang: str, psm: int, cfg_extra: str 
         else:
             text = " ".join(w for w, _ in pairs)
             avg_conf = sum(c for _, c in pairs) / max(1, len(pairs))
-        text = _post_normalize(text)
+        text = _post_normalize(_strip_html_basic(text))
         return text, avg_conf, False
     except Exception:
         return "", 0.0, False
@@ -782,7 +816,6 @@ def _enrich_with_icons_yolo(raw: Dict[str, Any],
 
 # -------------------- JVM → Windows-like normalize --------------------
 _JVM_CLASS_CT_MAP = {
-    # Rough mapping to keep dedupe/priority happy
     "JButton": "Button",
     "SquareStripeButton": "Button",
     "CloseButton": "Button",
@@ -794,7 +827,6 @@ _JVM_CLASS_CT_MAP = {
     "JCheckBox": "Button",
     "JRadioButton": "Button",
     "TabItem": "TabItem",
-    # Default: Other
 }
 
 def _is_jvm_state(data: Dict[str, Any]) -> bool:
@@ -803,13 +835,10 @@ def _is_jvm_state(data: Dict[str, Any]) -> bool:
     st = (data.get("state_type") or "").strip().lower()
     if st == "jvm": return True
     if st == "windows": return False
-    # Heuristic: JVM dumps often have 'componentCount' and nested 'elements' trees with 'class'/'children'
     if "componentCount" in data and isinstance(data.get("elements"), list):
         return True
-    # Windows states typically have 'screen' with w/h and element rects
     if isinstance(data.get("screen"), dict):
         return False
-    # If top has 'b64' and deeply nested 'children', lean JVM
     if "b64" in data:
         return True
     return False
@@ -822,14 +851,14 @@ def _jvm_flatten(nodes: List[Dict[str, Any]],
     if not nodes: return
     for n in nodes:
         cls = str(n.get("class") or "Unknown")
-        text = (n.get("text") or "").strip()
+        raw_text = (n.get("text") or "").strip()
+        text = _post_normalize(_strip_html_basic(raw_text))
         x = n.get("x"); y = n.get("y"); w = n.get("width"); h = n.get("height")
         ct = _JVM_CLASS_CT_MAP.get(cls, "Other")
 
-        # Build path token (keep short, no huge strings)
         token_label = text if text and len(text) <= 64 else cls
         token = f"{ct}({token_label})" if token_label else f"Other({cls})"
-        path_now = (parent_path + [token])[-3:]  # keep last 3 like Windows feel
+        path_now = (parent_path + [token])[-3:]
 
         if isinstance(x, int) and isinstance(y, int) and isinstance(w, int) and isinstance(h, int) and w > 0 and h > 0:
             l, t, r, b = x, y, x + w, y + h
@@ -844,25 +873,21 @@ def _jvm_flatten(nodes: List[Dict[str, Any]],
                 "center": {"x": l + w // 2, "y": t + h // 2},
                 "path": path_now,
                 "controlType": ct,
-                "windowActive": True,  # best-effort; JVM dump genelde tek aktif pencere
+                "windowActive": True,
             })
 
-        # Recurse
         ch = n.get("children")
         if isinstance(ch, list) and ch:
             _jvm_flatten(ch, path_now, out, mins, maxs)
 
 def _normalize_jvm_state(raw: Dict[str, Any]) -> Dict[str, Any]:
-    # Top-level screenshot
     b64 = raw.get("b64")
-    # Entry nodes (the sample uses 'elements' with a tree of 'children')
     roots = raw.get("elements") or []
     flat: List[Dict[str, Any]] = []
     mins = {"l": 1<<30, "t": 1<<30}
     maxs = {"r": 0, "b": 0}
     _jvm_flatten(roots, [], flat, mins, maxs)
 
-    # If coordinates start negative, offset to 0,0
     off_l = 0 if mins["l"] >= 0 else -mins["l"]
     off_t = 0 if mins["t"] >= 0 else -mins["t"]
 
@@ -889,13 +914,14 @@ def _maybe_normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
     try:
         if _is_jvm_state(raw):
             return _normalize_jvm_state(raw)
-        # If Windows-like but missing timestamp, add a fresh one (non-breaking)
+        # Windows-like: ensure timestamp and tag state_type
         if "timestamp" not in raw:
             raw = dict(raw)
             raw["timestamp"] = int(time.time() * 1000)
+        if "state_type" not in raw:
+            raw["state_type"] = "Windows"
         return raw
     except Exception:
-        # Fail-safe: just pass original
         return raw
 
 # -------------------- dedupe --------------------
@@ -971,7 +997,6 @@ def _normalized_name_from_icon(el: Dict[str, Any]) -> Optional[str]:
     return ICON_NAME_SEMANTICS.get(label, label)
 
 def _build_llm_element(el: Dict[str, Any], final_name: str) -> Dict[str, Any]:
-    # LLM'e sadece name, center, path
     return {
         "name": final_name,
         "center": el.get("center"),
@@ -1005,11 +1030,24 @@ def _filter_state_for_llm(raw: Dict[str, Any]) -> Dict[str, Any]:
     proc = _maybe_normalize(raw)
     elems = proc.get("elements") or []
     dbg: Dict[str, Any] = {}
+
+    # Enrichment
     _enrich_with_ocr_if_possible(proc, elems, dbg)
     _enrich_with_icons_yolo(proc, elems, dbg)
+
+    # Dedup'u sadece OCR kuyruğu/yan etkiler için çalıştır (sonucu zorunlu kullanma)
     unique, _debug = _dedupe_by_name_smart(elems)
-    final_elems = _finalize_elements_for_llm(unique)
-    return {"screen": proc.get("screen"), "timestamp": int(time.time()*1000), "elements": final_elems}
+
+    # İSTENEN DAVRANIŞ: for-LLM'e duplicate'ler de gitsin
+    src = elems if INCLUDE_DUPLICATES_FOR_LLM else unique
+
+    final_elems = _finalize_elements_for_llm(src)
+    return {
+        "screen": proc.get("screen"),
+        "timestamp": int(time.time()*1000),
+        "elements": final_elems
+    }
+
 
 def _filter_state_for_inspect(raw: Dict[str, Any]) -> Dict[str, Any]:
     proc = _maybe_normalize(raw)
@@ -1035,6 +1073,7 @@ async def config():
         "sut_timeout_sec": SUT_TIMEOUT_SEC,
         "strip_fields": sorted(STRIP_FIELDS),
         "dedupe_mode": f"{DEDUPE_KEY_MODE}+ct_rank+canon",
+        "include_duplicates_for_llm": INCLUDE_DUPLICATES_FOR_LLM,
         # OCR
         "ocr_enabled": OCR_ENABLED,
         "ocr_sync_budget": OCR_SYNC_BUDGET,
