@@ -1,5 +1,5 @@
 #include "action_handler.h"
-#include "third_party/json.hpp"
+#include "../third_party/json.hpp"
 #include <algorithm>
 #include <chrono>
 #include <thread>

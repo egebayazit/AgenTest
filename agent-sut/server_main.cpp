@@ -1,14 +1,16 @@
-// server_main.cpp
+﻿// server_main.cpp
 #include "third_party/httplib.h"
 #include "third_party/json.hpp"
+#include "jvm/jvm_bridge.h"
 
 #include <Windows.h>
 #include <ShellScalingAPI.h>   // DPI awareness
 #pragma comment(lib, "Shcore.lib")
 
 #include <string>
-// forward decl: base64.h dolaylı geliyorsa ikinci kez include etmeyelim
-std::string base64_encode(const unsigned char* data, size_t len);
+#include <optional>
+#include <stdexcept>
+#include "win/base64.h"
 
 #include <vector>
 #include <iostream>
@@ -16,10 +18,9 @@ std::string base64_encode(const unsigned char* data, size_t len);
 // ---- ACTION tarafı ----
 #include "action/action_handler.h"
 
-// ---- STATE tarafı yardımcı başlıklar (src klasöründen) ----
-#include "src/uia_utils.h"
-#include "src/capture.h"
-//#include "src/base64.h"
+// ---- WİN tarafı ----
+#include "win/uia_utils.h"
+#include "win/capture.h"
 //#include "base64.h"
 
 using json = nlohmann::json;
@@ -69,7 +70,7 @@ static std::wstring TimeStamp(){
     return buf;
 }
 
-// ========================= state JSON yardımcıları =================
+// ========================= winstate JSON yardımcıları =================
 static json PatternsToJson(const UiaPatterns& p){
     return {
         {"invoke", p.invoke}, {"value", p.value}, {"selectionItem", p.selectionItem},
@@ -122,58 +123,39 @@ static json make_state(UiaSession& uia, std::vector<unsigned char>* raw_png_out,
     json out;
     FillScreenInfo(out);
 
-    auto elems = uia.snapshot_filtered(128);  // daha küçük & filtreli
+    auto elems = uia.snapshot_filtered(128);  // daha kucuk & filtreli
     out["elements"] = json::array();
     HWND fgRoot = GetAncestor(GetForegroundWindow(), GA_ROOT);
-    int idx=0;
-    for(const auto& e : elems){
+    int idx = 0;
+    for (const auto& e : elems) {
         out["elements"].push_back(ElemToJsonLite(e, idx++, fgRoot));
     }
 
-    /*if(want_screenshot){
+    if (want_screenshot) {
         std::vector<unsigned char> png;
-        if(CaptureScreenPng(png)){
-            out["screenshot"] = { {"format","png"}, {"b64", base64_encode(png.data(), png.size())} };
-            if(raw_png_out) *raw_png_out = std::move(png);
+        if (CaptureScreenPng(png)) {
+            const std::string b64 = base64_encode(reinterpret_cast<const unsigned char*>(png.data()), png.size());
+            out["screenshot"] = {
+                {"format", "png"},
+                {"b64", b64}
+            };
+            if (raw_png_out) *raw_png_out = std::move(png);
         } else {
-            out["screenshot"] = { {"format","png"}, {"b64",""} };
-            if(raw_png_out) raw_png_out->clear();
+            out["screenshot"] = {
+                {"format", "png"},
+                {"b64", ""}
+            };
+            if (raw_png_out) raw_png_out->clear();
         }
     }
 
-    out["timestamp"] = (uint64_t) GetTickCount64();
-    return out;*/
-
-    if (want_screenshot) {
-    std::vector<unsigned char> png;
-    if (CaptureScreenPng(png)) {
-        nlohmann::json sc;
-        sc["format"] = "png";
-        sc["b64"]    = base64_encode(png.data(), png.size());
-        out["screenshot"] = sc;
-
-        if (raw_png_out) *raw_png_out = std::move(png);
-    } else {
-        nlohmann::json sc;
-        sc["format"] = "png";
-        sc["b64"]    = "";  // boş
-        out["screenshot"] = sc;
-
-        if (raw_png_out) raw_png_out->clear();
-    }
+    out["timestamp"] = static_cast<uint64_t>(GetTickCount64());
+    return out;
 }
 
-out["timestamp"] = static_cast<uint64_t>(GetTickCount64());
-return out;
-
-
-
-}
-
-// ========================= main (tek sunucu) ======================
+// ========================= main ======================
 int main(){
     EnableDpiAwareness(); // <- kırpılma için kritik
-
     httplib::Server svr;
 
     // ACTION handler (mevcut action main'inden)
@@ -187,11 +169,6 @@ int main(){
         res.set_content(R"({"status":"ok"})","application/json");
     });
 
-    // ---- basit ping (state main'de vardı)
-    svr.Get("/ping", [](const httplib::Request&, httplib::Response& res){
-        res.set_content("pong", "text/plain");
-    });
-
     // ---- ACTION endpoint (ACK-only)
     svr.Post("/action", [&action_handler](const httplib::Request& req, httplib::Response& res){
         const auto ct = req.get_header_value("Content-Type");
@@ -203,23 +180,23 @@ int main(){
         res.set_content(action_handler.Handle(req.body), "application/json");
     });
 
-    // ---- STATE endpoint (JSON + screenshot + element listesi)
-    svr.Post("/state", [&](const httplib::Request&, httplib::Response& res){
+    // ---- WINDOWS STATE endpoint (JSON + screenshot + element listesi)
+    svr.Post("/winstate", [&](const httplib::Request&, httplib::Response& res){
         std::vector<unsigned char> png_raw;
         auto j = make_state(uia, &png_raw, /*want_screenshot=*/true);
+        j["stateType"] = "windows";
 
-        // İsterseniz state/screenshot loglama (state main'deki gibi)
         const std::wstring base = ExeDir();
         const std::wstring ts   = TimeStamp();
-        const std::wstring statesDir = base + L"\\state_logs";
-        const std::wstring shotsDir  = base + L"\\screenshots";
+        const std::wstring statesDir = base + L"\\winstate_logs";
+        const std::wstring shotsDir  = base + L"\\winstate_screenshots";
         EnsureDir(statesDir);
         EnsureDir(shotsDir);
 
-        const std::wstring jsonPath = statesDir + L"\\state_" + ts + L".json";
-        const std::wstring pngPath  = shotsDir  + L"\\screen_" + ts + L".png";
+        const std::wstring jsonPath = statesDir + L"\\winstate_" + ts + L".json";
+        const std::wstring pngPath  = shotsDir  + L"\\winstate_" + ts + L".png";
 
-        const std::string jsonStr = j.dump();     // pretty değil -> küçük
+        const std::string jsonStr = j.dump();
         WriteAllTextUtf8(jsonPath, jsonStr);
         if(!png_raw.empty()){
             WriteAllBytes(pngPath, png_raw.data(), (DWORD)png_raw.size());
@@ -228,11 +205,216 @@ int main(){
         res.set_content(jsonStr, "application/json");
     });
 
+
+    // ---- Combined STATE endpoint (tries JVM state first, falls back to Windows state)
+    svr.Post("/state", [&](const httplib::Request& req, httplib::Response& res){
+        std::string jvmError;
+        try {
+            auto snapshot = jvm_bridge::CaptureSnapshot(std::nullopt);
+            if (!snapshot.success) {
+                throw std::runtime_error(snapshot.errorMessage);
+            }
+            json payload = json::parse(snapshot.snapshotJson);
+            json response = json::object();
+            response["stateType"] = "jvm";
+            std::optional<std::string> b64Data;
+            for (auto it = payload.begin(); it != payload.end(); ++it) {
+                if (it.key() == "b64" && it.value().is_string()) {
+                    b64Data = it.value().get<std::string>();
+                    continue;
+                }
+                response[it.key()] = it.value();
+            }
+            const std::wstring base = ExeDir();
+            const std::wstring ts   = TimeStamp();
+            const std::wstring logsDir = base + L"\\state_logs";
+            EnsureDir(logsDir);
+            const std::wstring jsonPath = logsDir + L"\\state_jvm_" + ts + L".json";
+            const std::wstring shotsDir = base + L"\\state_screenshots";
+            EnsureDir(shotsDir);
+            const std::wstring pngPath = shotsDir + L"\\state_jvm_" + ts + L".png";
+
+            bool screenshotWritten = false;
+            if (b64Data && !b64Data->empty()) {
+                response["b64"] = *b64Data;
+                response["screenshot"] = { {"format", "png"} };
+
+                std::string decoded = base64_decode(*b64Data);
+                if (!decoded.empty()) {
+                    WriteAllBytes(pngPath, decoded.data(), static_cast<DWORD>(decoded.size()));
+                    screenshotWritten = true;
+                }
+            } else {
+                response["screenshot"] = { {"format", "png"} };
+            }
+
+            const std::string responseStr = response.dump();
+
+            json logResponse = response;
+            if (screenshotWritten) {
+                logResponse["screenshot"]["filePath"] = ws2utf8(pngPath);
+            } else {
+                logResponse["screenshot"]["filePath"] = nullptr;
+            }
+            WriteAllTextUtf8(jsonPath, logResponse.dump());
+
+            res.set_content(responseStr, "application/json");
+            return;
+        } catch (const std::exception& ex) {
+            jvmError = ex.what();
+        }
+
+        std::vector<unsigned char> png_raw;
+        auto j = make_state(uia, &png_raw, /*want_screenshot=*/true);
+        j["stateType"] = "windows";
+        if (!jvmError.empty()) {
+            j["fallbackReason"] = jvmError;
+        }
+
+        const std::wstring base = ExeDir();
+        const std::wstring ts   = TimeStamp();
+        const std::wstring logsDir = base + L"\\state_logs";
+        const std::wstring shotsDir  = base + L"\\state_screenshots";
+        EnsureDir(logsDir);
+        EnsureDir(shotsDir);
+
+        const std::wstring jsonPath = logsDir + L"\\state_windows_" + ts + L".json";
+        const std::wstring pngPath  = shotsDir  + L"\\state_windows_" + ts + L".png";
+
+        const std::string jsonStr = j.dump();
+        WriteAllTextUtf8(jsonPath, jsonStr);
+        if(!png_raw.empty()){
+            WriteAllBytes(pngPath, png_raw.data(), (DWORD)png_raw.size());
+        }
+
+        res.set_content(jsonStr, "application/json");
+    });
+
+    // ---- JVM STATE endpoint
+    svr.Post("/jvmstate", [&](const httplib::Request& req, httplib::Response& res){
+        std::optional<unsigned long> pidOverride;
+        if (auto pidParam = req.get_param_value("pid"); !pidParam.empty()) {
+            try {
+                pidOverride = static_cast<unsigned long>(std::stoul(pidParam));
+            } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"status":"error","code":"INVALID_PID","message":"pid query parameter must be numeric"})", "application/json");
+                return;
+            }
+        } else if (!req.body.empty()) {
+            try {
+                auto bodyJson = json::parse(req.body);
+                if (bodyJson.contains("pid") && !bodyJson["pid"].is_null()) {
+                    pidOverride = bodyJson["pid"].get<unsigned long>();
+                }
+            } catch (const std::exception& ex) {
+                res.status = 400;
+                json err = {
+                    {"status", "error"},
+                    {"code", "INVALID_JSON"},
+                    {"message", ex.what()}
+                };
+                res.set_content(err.dump(), "application/json");
+                return;
+            }
+        }
+
+        auto snapshot = jvm_bridge::CaptureSnapshot(pidOverride);
+        if (!snapshot.success) {
+            json err = {
+                {"status", "error"},
+                {"code", "JVM_CAPTURE_FAILED"},
+                {"message", snapshot.errorMessage},
+                {"exitCode", snapshot.exitCode},
+                {"stateType", "jvm"}
+            };
+            if (snapshot.usedPid) {
+                err["pid"] = *snapshot.usedPid;
+            }
+            const std::wstring base = ExeDir();
+            const std::wstring ts   = TimeStamp();
+            const std::wstring logsDir = base + L"\\jvmstate_logs";
+            EnsureDir(logsDir);
+            const std::wstring errPath = logsDir + L"\\jvmstate_error_" + ts + L".json";
+            WriteAllTextUtf8(errPath, err.dump());
+
+            res.status = 500;
+            res.set_content(err.dump(), "application/json");
+            return;
+        }
+
+        try {
+            json payload = json::parse(snapshot.snapshotJson);
+            json response = json::object();
+            response["stateType"] = "jvm";
+            std::optional<std::string> b64Data;
+            for (auto it = payload.begin(); it != payload.end(); ++it) {
+                if (it.key() == "b64" && it.value().is_string()) {
+                    b64Data = it.value().get<std::string>();
+                    continue;
+                }
+                response[it.key()] = it.value();
+            }
+            const std::wstring base = ExeDir();
+            const std::wstring ts   = TimeStamp();
+            const std::wstring logsDir = base + L"\\jvmstate_logs";
+            const std::wstring shotsDir = base + L"\\jvmstate_screenshots";
+            EnsureDir(logsDir);
+            EnsureDir(shotsDir);
+            const std::wstring jsonPath = logsDir + L"\\jvmstate_" + ts + L".json";
+            const std::wstring pngPath = shotsDir + L"\\jvmstate_" + ts + L".png";
+            bool screenshotWritten = false;
+            if (b64Data && !b64Data->empty()) {
+                response["b64"] = *b64Data;
+                response["screenshot"] = { {"format", "png"} };
+
+                std::string decoded = base64_decode(*b64Data);
+                if (!decoded.empty()) {
+                    WriteAllBytes(pngPath, decoded.data(), static_cast<DWORD>(decoded.size()));
+                    screenshotWritten = true;
+                }
+            } else {
+                response["screenshot"] = { {"format", "png"} };
+            }
+
+            const std::string responseStr = response.dump();
+
+            json logResponse = response;
+            if (screenshotWritten) {
+                logResponse["screenshot"]["filePath"] = ws2utf8(pngPath);
+            } else {
+                logResponse["screenshot"]["filePath"] = nullptr;
+            }
+            WriteAllTextUtf8(jsonPath, logResponse.dump());
+
+            res.set_content(responseStr, "application/json");
+        } catch (const std::exception& ex) {
+            json err = {
+                {"status", "error"},
+                {"code", "JVM_RESPONSE_PARSE_FAILED"},
+                {"message", ex.what()},
+                {"stateType", "jvm"}
+            };
+            if (snapshot.usedPid) {
+                err["pid"] = *snapshot.usedPid;
+            }
+            const std::wstring base = ExeDir();
+            const std::wstring ts   = TimeStamp();
+            const std::wstring logsDir = base + L"\\jvmstate_logs";
+            EnsureDir(logsDir);
+            const std::wstring errPath = logsDir + L"\\jvmstate_error_parse_" + ts + L".json";
+            WriteAllTextUtf8(errPath, err.dump());
+
+            res.status = 500;
+            res.set_content(err.dump(), "application/json");
+        }
+    });
+
     const char* host = "0.0.0.0";
     const int   port = 18080;
 
     std::cout << "SUT server listening on http://" << host << ":" << port
-              << " (endpoints: /healthz, /action, /state, /ping)\n";
+              << " (endpoints: /healthz, /action, /winstate, /state, /jvmstate)\n";
 
     if(!svr.listen(host, port)){
         std::cerr << "Failed to bind on port " << port << "\n";

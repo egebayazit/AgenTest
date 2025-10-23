@@ -1,4 +1,4 @@
-# SUT Action -- API & Geliştirici Rehberi
+﻿# SUT Action -- API & Geliştirici Rehberi
 
 Bu modül, lab ortamında çalışan **SUT-Action** ajanıdır. Windows'ta `SendInput` kullanarak fare/klavye eylemlerini uygular ve **ACK-only** bir yanıt üretir. **State döndürmez.** Controller, eylem sonrası güncel durumu görmek için ayrı `/state` endpoint'ini çağırmalıdır.
 
@@ -31,9 +31,6 @@ action/
 ├─ action_robot.h / .cpp     # Düşük seviye: SendInput ile input enjeksiyonu
 ├─ action_handler.h / .cpp   # Orta seviye: JSON → ActionRobot çağrıları
 ├─ main_action.cpp           # (test server) HTTP /action ve /healthz
-└─ third_party/
-   ├─ json.hpp               # nlohmann/json (single header)
-   └─ httplib.h              # cpp-httplib (single header)
 ```
 
 ### Dosyaların Rolü
@@ -42,19 +39,6 @@ action/
 - **action_handler**: HTTP body (JSON) parse → step'leri sırayla uygular → **ACK-only JSON** döner; UTF-8 → UTF-16 dönüşüm (TypeText)
 - **main_action**: Minimal HTTP servis (`/action`, `/healthz`) -- lokal test için
 
-## Derleme & Çalıştırma
-
-```powershell
-cd agent-sut/action
-cmake -S . -B build -DBUILD_SUT_ACTION_SERVER=ON
-cmake --build build --config Release
-.\build\Release\sut_action_server.exe
-```
-
-Sağlık kontrolü:
-```
-GET http://127.0.0.1:18080/healthz  -> {"status":"ok"}
-```
 
 ## HTTP API: `/action`
 
@@ -273,25 +257,6 @@ GET http://127.0.0.1:18080/healthz  -> {"status":"ok"}
 - **Güvenlik**: UAC/secure desktop'ta input engellenebilir; lab'da aynı bütünlük seviyesinde çalıştırın
 - **Atomic batch**: Hata olduğunda yürütme durur; `applied`, tamamlanan adım sayısıdır
 
-## State ile Birleştirme
-
-**Önerilen akış**:
-
-1. LLM → Controller: `get_state`
-2. Controller → SUT: `POST /state` (UIA + screenshot + DPI meta)
-3. Controller → (opsiyonel) ODS: screenshot + element ipuçları → OCR/ikon ekleri
-4. Controller → LLM: zenginleştirilmiş state
-5. LLM → Controller: planlanan adım
-6. Controller → SUT: `POST /action` (bu modül)
-7. Controller → SUT: tekrar `POST /state` → LLM'e yeni durum
-
-**Kısa vadede**: Controller, `element_id` → `rect`/`point` çözümleyip `/action`'a öyle gönderir.  
-**Uzun vadede**: `/action`'a `target.element_id` alanı eklenebilir (SUT içinde çözüm).
-
-## İstemci İpuçları
-
-- **Header**: `Content-Type: application/json; charset=utf-8`
-- **Postman**: Body → raw → JSON
 
 ### PowerShell UTF-8 gönderimi:
 
