@@ -1,3 +1,4 @@
-# agent-llm
-
-Bu klasör, agent-llm componentine ait dosyaları içerecektir.
+# run service  
+uvicorn llm_service:app --host 0.0.0.0 --port 18888 --reload  
+# run ui  
+streamlit run ui.py
