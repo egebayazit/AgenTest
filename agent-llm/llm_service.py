@@ -280,5 +280,5 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run("llm_service:app",
                 host="0.0.0.0",
-                port=int(os.getenv("LLM_SERVICE_PORT", "18888")),
+                port=int(os.getenv("LLM_SERVICE_BASE", "18888")),
                 reload=True)

@@ -93,6 +93,7 @@ target_link_libraries(agent_sut
     user32
     Uiautomationcore
     Ole32 OleAut32
+    Oleacc
     Gdi32
     Windowscodecs
     Dwmapi

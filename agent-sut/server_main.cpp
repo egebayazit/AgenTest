@@ -123,7 +123,7 @@ static json make_state(UiaSession& uia, std::vector<unsigned char>* raw_png_out,
     json out;
     FillScreenInfo(out);
 
-    auto elems = uia.snapshot_filtered(128);  // daha kucuk & filtreli
+    auto elems = uia.snapshot_filtered(500);  // daha kucuk & filtreli
     out["elements"] = json::array();
     HWND fgRoot = GetAncestor(GetForegroundWindow(), GA_ROOT);
     int idx = 0;

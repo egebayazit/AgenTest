@@ -1,4 +1,3 @@
-# controller_service.py
 from __future__ import annotations
 
 import os, re, io, base64, time, unicodedata, hashlib, html
@@ -30,7 +29,7 @@ except Exception:
     _YOLO_AVAILABLE = False
 
 # -------------------- Config --------------------
-SUT_STATE_URL = os.getenv("SUT_STATE_URL", "http://127.0.0.1:18080/state")
+SUT_STATE_URL = os.getenv("SUT_STATE_URL", "")
 LLM_RUN_URL = os.getenv("LLM_RUN_URL")
 SUT_TIMEOUT_SEC = int(os.getenv("SUT_TIMEOUT_SEC", "45"))
 
@@ -109,7 +108,7 @@ ICON_NAME_SEMANTICS: Dict[str, str] = {
 }
 
 APP_NAME = "AgenTest Controller"
-APP_VER = "0.17.1-jvm-normalize+llm-minimal"
+APP_VER = "0.17.2-minimal-llm-output"
 
 STRIP_FIELDS = {"controlType", "enabled", "patterns", "idx"}
 
@@ -310,7 +309,7 @@ def _pad_and_crop(img: Image.Image, rect: Dict[str, Any]) -> Image.Image:
     l = max(0, l - pad); t = max(0, t - pad)
     r = r + pad; b = b + pad
 
-    # clamp to image bounds (ve ordering’i tekrar garanti et)
+    # clamp to image bounds (ve ordering'i tekrar garanti et)
     l = min(max(0, l), max(0, img_w - 1))
     t = min(max(0, t), max(0, img_h - 1))
     r = min(max(l + 1, r), img_w)
@@ -996,26 +995,143 @@ def _normalized_name_from_icon(el: Dict[str, Any]) -> Optional[str]:
         return None
     return ICON_NAME_SEMANTICS.get(label, label)
 
-def _build_llm_element(el: Dict[str, Any], final_name: str) -> Dict[str, Any]:
-    return {
-        "name": final_name,
-        "center": el.get("center"),
-        "path": el.get("path"),
-    }
+MIN_CLICKABLE_PX = 12.0
 
-def _finalize_elements_for_llm(elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _extract_rect_xywh(rect_obj: Any) -> Optional[Dict[str, float]]:
+    if not isinstance(rect_obj, dict):
+        return None
+    if all(k in rect_obj for k in ("x", "y", "w", "h")):
+        try:
+            x = float(rect_obj["x"])
+            y = float(rect_obj["y"])
+            w = float(rect_obj["w"])
+            h = float(rect_obj["h"])
+        except (TypeError, ValueError):
+            return None
+        if w <= 0 or h <= 0:
+            return None
+        return {"x": x, "y": y, "w": w, "h": h}
+    if all(k in rect_obj for k in ("l", "r", "t", "b")):
+        try:
+            l = float(rect_obj["l"])
+            r = float(rect_obj["r"])
+            t = float(rect_obj["t"])
+            b = float(rect_obj["b"])
+        except (TypeError, ValueError):
+            return None
+        w = r - l
+        h = b - t
+        if w <= 0 or h <= 0:
+            return None
+        return {"x": l, "y": t, "w": w, "h": h}
+    return None
+
+def _clamp_rect_within_screen(rect: Dict[str, float], screen: Optional[Dict[str, Any]]) -> Dict[str, float]:
+    if not isinstance(screen, dict):
+        return rect
+    sw = screen.get("w")
+    sh = screen.get("h")
+    x, y, w, h = rect["x"], rect["y"], rect["w"], rect["h"]
+    if isinstance(sw, (int, float)) and sw > 0:
+        if x < 0:
+            x = 0.0
+        if x + w > sw:
+            x = max(0.0, sw - w)
+    else:
+        x = max(0.0, x)
+    if isinstance(sh, (int, float)) and sh > 0:
+        if y < 0:
+            y = 0.0
+        if y + h > sh:
+            y = max(0.0, sh - h)
+    else:
+        y = max(0.0, y)
+    rect["x"] = x
+    rect["y"] = y
+    rect["w"] = max(1.0, w)
+    rect["h"] = max(1.0, h)
+    return rect
+
+def _ensure_rect_min_size(rect: Dict[str, float], screen: Optional[Dict[str, Any]], min_size: float = MIN_CLICKABLE_PX) -> Dict[str, float]:
+    w = rect["w"]
+    h = rect["h"]
+    if w >= min_size and h >= min_size:
+        return _clamp_rect_within_screen(rect, screen)
+    cx = rect["x"] + w / 2.0
+    cy = rect["y"] + h / 2.0
+    new_w = max(w, min_size)
+    new_h = max(h, min_size)
+    adjusted = {"x": cx - new_w / 2.0, "y": cy - new_h / 2.0, "w": new_w, "h": new_h}
+    return _clamp_rect_within_screen(adjusted, screen)
+
+def _rect_from_element(el: Dict[str, Any], screen: Optional[Dict[str, Any]]) -> Optional[Dict[str, float]]:
+    rect = _extract_rect_xywh(el.get("rect"))
+    if rect:
+        return _ensure_rect_min_size(rect, screen)
+    center = el.get("center")
+    if isinstance(center, dict) and all(k in center for k in ("x", "y")):
+        try:
+            cx = float(center["x"])
+            cy = float(center["y"])
+        except (TypeError, ValueError):
+            return None
+        # synthetic clickable region; keep modest but >0 size
+        size = MIN_CLICKABLE_PX
+        synthetic = {"x": cx - size / 2.0, "y": cy - size / 2.0, "w": size, "h": size}
+        return _clamp_rect_within_screen(synthetic, screen)
+    return None
+
+def _center_from_element(el: Dict[str, Any], rect: Optional[Dict[str, float]]) -> Optional[Dict[str, float]]:
+    center = el.get("center")
+    if isinstance(center, dict) and all(k in center for k in ("x", "y")):
+        try:
+            float(center["x"])
+            float(center["y"])
+            return {"x": float(center["x"]), "y": float(center["y"])}
+        except (TypeError, ValueError):
+            pass
+    if rect:
+        return {"x": rect["x"] + rect["w"] / 2.0, "y": rect["y"] + rect["h"] / 2.0}
+    return None
+
+def _finalize_elements_for_llm(elements: List[Dict[str, Any]], screen: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """LLM için minimal çıktı: name/name_ocr ve center"""
     out: List[Dict[str, Any]] = []
     for el in elements or []:
-        name = (el.get("name") or "").strip()
-        if not name:
-            name = (el.get("name_ocr") or "").strip()
-        if not name:
-            icon_name = _normalized_name_from_icon(el)
-            if icon_name:
-                name = icon_name
-        if not name:
+        # Name kaynağını belirle
+        original_name = (el.get("name") or "").strip()
+        ocr_name = (el.get("name_ocr") or "").strip()
+        icon_name = _normalized_name_from_icon(el)
+        
+        # Hangi kaynaktan geldiğini takip et
+        final_name = None
+        name_key = "name"
+        
+        if original_name:
+            final_name = original_name
+            name_key = "name"
+        elif ocr_name:
+            final_name = ocr_name
+            name_key = "name_ocr"
+        elif icon_name:
+            final_name = icon_name
+            name_key = "name_ocr"  # icon da OCR gibi muamele
+        
+        if not final_name:
             continue
-        out.append(_build_llm_element(el, name))
+        
+        # Center'ı hesapla
+        rect = _rect_from_element(el, screen)
+        center = _center_from_element(el, rect)
+        if center is None:
+            continue
+        
+        # Minimal çıktı: kaynağına göre name veya name_ocr
+        out.append({
+            name_key: final_name,
+            "center": center
+        })
+    
     return out
 
 # -------------------- strip (for /state/filtered inspection) --------------------
@@ -1031,17 +1147,19 @@ def _filter_state_for_llm(raw: Dict[str, Any]) -> Dict[str, Any]:
     elems = proc.get("elements") or []
     dbg: Dict[str, Any] = {}
 
-    # Enrichment
+    # Enrichment (OCR ve YOLO)
     _enrich_with_ocr_if_possible(proc, elems, dbg)
     _enrich_with_icons_yolo(proc, elems, dbg)
 
-    # Dedup'u sadece OCR kuyruğu/yan etkiler için çalıştır (sonucu zorunlu kullanma)
+    # Dedup'u sadece OCR kuyruğu/yan etkiler için çalıştır
     unique, _debug = _dedupe_by_name_smart(elems)
 
-    # İSTENEN DAVRANIŞ: for-LLM'e duplicate'ler de gitsin
+    # INCLUDE_DUPLICATES_FOR_LLM ayarına göre kaynak seç
     src = elems if INCLUDE_DUPLICATES_FOR_LLM else unique
 
-    final_elems = _finalize_elements_for_llm(src)
+    # LLM için minimal finalize (sadece name + center)
+    final_elems = _finalize_elements_for_llm(src, proc.get("screen"))
+    
     return {
         "screen": proc.get("screen"),
         "timestamp": int(time.time()*1000),
