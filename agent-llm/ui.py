@@ -180,7 +180,7 @@ with col2:
                     for s in st.session_state.test_steps
                 ],
                 "temperature": 0.1,
-                "max_attempts": 6,
+                "max_attempts": 4,
             }
             resp = requests.post(RUN_URL, json=payload, timeout=120)
             if resp.ok:

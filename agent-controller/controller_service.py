@@ -6,7 +6,7 @@ import concurrent.futures as cf
 import multiprocessing
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 # --- optional: load .env ---
@@ -32,6 +32,9 @@ except Exception:
 SUT_STATE_URL = os.getenv("SUT_STATE_URL", "")
 LLM_RUN_URL = os.getenv("LLM_RUN_URL")
 SUT_TIMEOUT_SEC = int(os.getenv("SUT_TIMEOUT_SEC", "45"))
+# --- ODS (OmniParser) ---
+ODS_URL = os.getenv("ODS_URL", "http://127.0.0.1:8000/parse").strip()
+ODS_TIMEOUT_SEC = int(os.getenv("ODS_TIMEOUT_SEC", "30"))
 
 DEDUPE_KEY_MODE = os.getenv("DEDUPE_KEY_MODE", "name").lower()
 INCLUDE_DUPLICATES_FOR_LLM = os.getenv("INCLUDE_DUPLICATES_FOR_LLM", "1") in ("1","true","True")
@@ -125,6 +128,8 @@ app.add_middleware(
 app.state.last_raw_state: Optional[Dict[str, Any]] = None
 app.state.last_raw_ts: Optional[float] = None
 app.state.last_sut_error: Optional[Dict[str, Any]] = None
+app.state.last_ods_error: Optional[Dict[str, Any]] = None
+
 
 app.state.ocr_queue: List[Dict[str, Any]] = []
 app.state.ocr_queue_max = 500
@@ -143,6 +148,63 @@ _YOLO_CLASS_NAMES: Dict[int, str] = {}
 # -------------------- http utils --------------------
 def _httpx_timeout() -> httpx.Timeout:
     return httpx.Timeout(SUT_TIMEOUT_SEC, read=SUT_TIMEOUT_SEC, connect=5.0)
+
+def _ods_timeout() -> httpx.Timeout:
+    return httpx.Timeout(ODS_TIMEOUT_SEC, read=ODS_TIMEOUT_SEC, connect=5.0)
+
+
+def _extract_screenshot_b64(raw: Dict[str, Any]) -> Optional[str]:
+    """
+    SUT state içinden screenshot base64 string'ini çıkarır.
+    LLM'e giden state'e base64 eklemeyeceğiz, sadece ODS çağrısında kullanacağız.
+    """
+    if not isinstance(raw, dict):
+        return None
+
+    sc = raw.get("screenshot")
+    if isinstance(sc, dict):
+        for k in ("b64", "image_b64", "image", "data", "screenshot_base64"):
+            v = sc.get(k)
+            if isinstance(v, str) and len(v) > 1000:
+                return v
+
+    if isinstance(sc, str) and len(sc) > 1000:
+        return sc
+
+    for k in ("screenshot_base64", "screenshot_png", "screenshot_jpg", "b64", "image_b64", "image"):
+        v = raw.get(k)
+        if isinstance(v, str) and len(v) > 1000:
+            return v
+
+    return None
+
+
+async def _call_ods_with_base64(b64: str) -> Dict[str, Any]:
+    """
+    OmniParser / ODS servisine base64 ekran görüntüsü gönderir.
+    """
+    if not ODS_URL:
+        raise RuntimeError("ODS_URL is not configured")
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=_ods_timeout(),
+            trust_env=False,
+            follow_redirects=True,  # <<< ÖNEMLİ: 307'yi takip et
+        ) as client:
+            r = await client.post(ODS_URL, json={"base64_image": b64})
+            r.raise_for_status()
+            data = r.json()
+            app.state.last_ods_error = None
+            return data
+    except Exception as e:
+        app.state.last_ods_error = {
+            "type": type(e).__name__,
+            "url": ODS_URL,
+            "message": str(e),
+        }
+        raise
+
 
 async def _fetch_raw_state() -> Dict[str, Any]:
     try:
@@ -172,6 +234,53 @@ def _rect_area(el: Dict[str, Any]) -> int:
 def _screen_size(raw: Dict[str, Any]) -> Tuple[int, int]:
     scr = raw.get("screen") or {}
     return int(scr.get("w", 0)), int(scr.get("h", 0))
+
+def _elements_from_ods_response(ods_raw: dict, screen: dict) -> list[dict]:
+    """
+    ODS raw yanıtından (parsed_content_list) LLM'e gidecek element listesini üretir.
+
+    - text + icon tüm item'ları alır
+    - content'i name_ods'e yazar
+    - bbox + ekran boyutuna göre center (x, y) hesaplar
+    - Hiçbir ekstra filtre / kırpma yapmaz
+    """
+    w = screen.get("w", 1920)
+    h = screen.get("h", 1080)
+
+    items = ods_raw.get("parsed_content_list") or []
+    elements: list[dict] = []
+
+    for item in items:
+        item_type = item.get("type")
+        if item_type not in ("text", "icon"):
+            # Sadece text ve icon istiyoruz
+            continue
+
+        bbox = item.get("bbox") or []
+        if len(bbox) != 4:
+            # Center hesaplayamayacağımız bozuk bbox'ları at
+            continue
+
+        x1, y1, x2, y2 = bbox
+        cx = (x1 + x2) / 2.0 * w
+        cy = (y1 + y2) / 2.0 * h
+
+        content = item.get("content")
+        # Hiçbir şey yazmıyorsa bile None yerine boş string olsun
+        if content is None:
+            content = ""
+
+        elements.append(
+            {
+                "name_ods": content,  # ← DEĞİŞTİRİLDİ (name → name_ods)
+                "center": {
+                    "x": float(cx),
+                    "y": float(cy),
+                },
+            }
+        )
+
+    return elements
 
 def _iou(a: Dict[str, int], b: Dict[str, int]) -> float:
     ax1, ay1, ax2, ay2 = int(a["l"]), int(a["t"]), int(a["r"]), int(a["b"])
@@ -1095,27 +1204,31 @@ def _center_from_element(el: Dict[str, Any], rect: Optional[Dict[str, float]]) -
     return None
 
 def _finalize_elements_for_llm(elements: List[Dict[str, Any]], screen: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """LLM için minimal çıktı: name/name_ocr ve center"""
+    """LLM için minimal çıktı: name/name_ocr/name_ods ve center"""
     out: List[Dict[str, Any]] = []
     for el in elements or []:
         # Name kaynağını belirle
         original_name = (el.get("name") or "").strip()
         ocr_name = (el.get("name_ocr") or "").strip()
+        ods_name = (el.get("name_ods") or "").strip()  # ← EKLE
         icon_name = _normalized_name_from_icon(el)
         
-        # Hangi kaynaktan geldiğini takip et
+        # Öncelik sırası: name > name_ods > name_ocr > icon
         final_name = None
         name_key = "name"
         
         if original_name:
             final_name = original_name
             name_key = "name"
+        elif ods_name:  
+            final_name = ods_name
+            name_key = "name_ods"
         elif ocr_name:
             final_name = ocr_name
             name_key = "name_ocr"
         elif icon_name:
             final_name = icon_name
-            name_key = "name_ocr"  # icon da OCR gibi muamele
+            name_key = "name_ocr"  
         
         if not final_name:
             continue
@@ -1126,7 +1239,7 @@ def _finalize_elements_for_llm(elements: List[Dict[str, Any]], screen: Optional[
         if center is None:
             continue
         
-        # Minimal çıktı: kaynağına göre name veya name_ocr
+        # Minimal çıktı: kaynağına göre name, name_ods veya name_ocr
         out.append({
             name_key: final_name,
             "center": center
@@ -1165,6 +1278,25 @@ def _filter_state_for_llm(raw: Dict[str, Any]) -> Dict[str, Any]:
         "timestamp": int(time.time()*1000),
         "elements": final_elems
     }
+
+def _filter_state_from_ods(raw: Dict[str, Any], ods: Dict[str, Any]) -> Dict[str, Any]:
+    proc = _maybe_normalize(raw)
+    screen = proc.get("screen") or {}
+
+    ods_elements = _elements_from_ods_response(ods, screen)
+    final_elems = _finalize_elements_for_llm(ods_elements, screen)
+
+    return {
+        "screen": screen,
+        "timestamp": int(time.time() * 1000),
+        "elements": final_elems,
+        "_debug": {
+            "source": "ods",
+            "ods_item_count": len(ods_elements),
+        },
+    }
+
+
 
 
 def _filter_state_for_inspect(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -1233,7 +1365,15 @@ async def config():
         "icon_box_max_h": ICON_BOX_MAX_H,
         "icon_class_overrides": ICON_CLASS_OVERRIDES,
         "icon_name_semantics": ICON_NAME_SEMANTICS,
+        # --- ODS ---
+        "ods_url": ODS_URL,
+        "ods_timeout_sec": ODS_TIMEOUT_SEC,
+        "ods_last_error": app.state.last_ods_error,
     }
+
+@app.get("/debug/last-ods-error")
+async def debug_last_ods_error():
+    return {"status": "ok", "last": app.state.last_ods_error}
 
 @app.get("/debug/last-sut-error")
 async def debug_last_sut_error():
@@ -1263,6 +1403,74 @@ async def state_filtered():
 async def state_for_llm():
     raw = await _fetch_raw_state()
     return _filter_state_for_llm(raw)
+
+@app.post("/state/from-ods")
+async def state_from_ods():
+    """
+    SUT'tan raw state alır, screenshot base64'ünü ODS'e gönderir ve
+    dönen parsed_content_list kullanılarak LLM için minimal state üretir.
+
+    Eğer:
+    - ODS_URL boşsa,
+    - screenshot yoksa,
+    - ODS timeout / hata verirse,
+
+    sessizce _filter_state_for_llm'e fallback yapar.
+    """
+    raw = await _fetch_raw_state()
+
+    # ODS ayarlı değilse direkt normal pipeline
+    if not ODS_URL:
+        return _filter_state_for_llm(raw)
+
+    b64 = _extract_screenshot_b64(raw)
+    if not b64:
+        # screenshot yoksa ODS çalıştırmayalım
+        return _filter_state_for_llm(raw)
+
+    try:
+        ods_data = await _call_ods_with_base64(b64)
+        if not isinstance(ods_data, dict) or not ods_data.get("parsed_content_list"):
+            # ODS boş veya beklenmedik cevap -> fallback
+            return _filter_state_for_llm(raw)
+
+        return _filter_state_from_ods(raw, ods_data)
+    except Exception:
+        # Hata detayını _call_ods_with_base64 zaten app.state.last_ods_error'a yazıyor.
+        # Burada sadece ODS yokmuş gibi davranıyoruz.
+        return _filter_state_for_llm(raw)
+
+
+@app.post("/debug/ods-state")
+async def debug_ods_state():
+    """
+    SUT'tan raw state al,
+    screenshot'ı ODS'e gönder,
+    ODS'in ham cevabını ve sayıları döndür.
+    """
+    raw = await _fetch_raw_state()
+    b64 = _extract_screenshot_b64(raw)
+    if not b64:
+        raise HTTPException(status_code=400, detail="no screenshot in state")
+
+    try:
+        ods = await _call_ods_with_base64(b64)
+    except Exception as e:
+        # _call_ods_with_base64 zaten app.state.last_ods_error dolduruyor
+        raise HTTPException(
+            status_code=502,
+            detail={"message": "ODS call failed", "last_error": app.state.last_ods_error},
+        )
+
+    return {
+        "status": "ok",
+        "sut_screen": raw.get("screen"),
+        "sut_elements_count": len(raw.get("elements") or []),
+        "ods_keys": list(ods.keys()),
+        "ods_latency": ods.get("latency"),
+        "ods_parsed_count": len(ods.get("parsed_content_list") or []),
+        "ods_raw": ods,  # istersen burada da kısaltabilirsin
+    }
 
 @app.post("/state/fallback-full")
 async def state_fallback_full():
