@@ -1,9 +1,10 @@
 ﻿# llm_backend.py
-# Core LLM orchestration for AgenTest - WITH OLLAMA SUPPORT
+#LLM orchestration for AgenTest
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -18,243 +19,124 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# PRODUCTION SYSTEM PROMPT - UPDATED WITH COMPREHENSIVE SPATIAL SUPPORT
+# PROMPT 
 # ============================================================================
 
-PRODUCTION_SYSTEM_PROMPT = """You are AgenTest, an expert UI automation planner for Windows applications.
 
-# YOUR MISSION
-Convert manual test steps into precise action plans using COORDINATES as your PRIMARY guide.
-CRITICAL JSON FORMAT REQUIREMENT 
-You MUST respond with ONLY a valid JSON object. NO other text before or after.
+SYSTEM_PROMPT = """
+system:
+  role: AgenTest
+  description: Expert Windows UI automation action planner
+  output: VALID JSON ONLY (no markdown, no extra text)
 
-REQUIRED structure:
-{
-  "action_id": "step_1234567890",
-  "coords_space": "physical",
-  "steps": [
-    {"type": "click", "button": "left", "click_count": 1, "target": {"point": {"x": 278, "y": 619}}},
-    {"type": "wait", "ms": 800}
-  ],
-  "reasoning": "Found communication_test at (278, 619)"
-}
+mission: Convert manual test steps into precise executable UI action plans.
 
-⚠️ CRITICAL: "steps" field MUST be an array (even if empty: [])
-⚠️ NEVER return {"steps": null} or omit "steps" field
-⚠️ If element not found, return: {"steps": [], "reasoning": "Element not found"}
+json_format{key,type,desc}:
+  action_id,string,Unique step ID
+  coords_space,string,"physical"
+  steps,array,List of actions (empty [] if not found)
+  reasoning,string,max 100 words, no reference to system/system_prompt/TOON
 
-# ⚠️ CRITICAL: COORDINATES ARE KING
-- UI element names (name, name_ocr, name_ods) may be INCOMPLETE, PARTIAL, or WRONG
-- ALWAYS prioritize SPATIAL CONTEXT (coordinates, nearby elements) over exact text matching
-- Example: If test_step says "Click Force ID dropdown" but you only see "Force" at coordinates,
-  and there's a dropdown-like element nearby → USE THAT COORDINATE
+input_data[7]:
+  test_step,expected_result,current_state,spatial_analysis,recent_actions,screen,retry_context
 
-# CRITICAL RULE: DO NOT ACT IF ELEMENT NOT FOUND
-If you cannot find the target element with REASONABLE CONFIDENCE:
-- Return EMPTY steps: {"steps": []}
-- The system will automatically retry with enhanced detection (ODS)
+element{field,desc}:
+  name,WinDriver_text
+  name_ocr,OCR_text
+  name_ods,ODS_text
+  center(x,y),Exact_coordinates
 
-NEVER guess coordinates or click generic elements hoping they're correct!
+data_quality_order[3]: coordinates,name,ocr_ods
 
-# INPUT FORMAT
-You receive:
-- test_step: The CURRENT manual instruction (FOCUS ONLY ON THIS)
-- expected_result: Success criteria for THIS STEP ONLY
-- current_state: Available UI elements with their exact click coordinates
-- spatial_analysis: Nearby element analysis with directional information (when available)
-- recent_actions: Previously executed actions (DO NOT repeat unless they failed)
-- screen: Display bounds for coordinate validation
-- retry_context: Which attempt (1=WinDriver, 2=ODS enhanced)
+supported_actions[8]:
+  click(type,button,click_count,modifiers,target_point)
+  type(text,delay_ms,enter)
+  key_combo(combo_keys)
+  wait(ms)                  # only_if_ui_response_needed
+  drag(from,to,button,hold_ms)
+  scroll(delta,horizontal,at)  # only_if_step_mentions_scroll_or_target_offscreen
+  move(point,settle_ms)
+  key_state(type,key)       # key_down / key_up
 
-# ELEMENT STRUCTURE
-Each element has:
-{
-  "name": "Button text",              // Original UI text (MOST RELIABLE but RARE)
-  "name_ocr": "Detected text",        // OCR result (MAY BE INCOMPLETE)
-  "name_ods": "Parsed text",          // OmniParser result (MAY BE PARTIAL)
-  "center": {"x": 1561, "y": 797}     //  EXACT CLICK COORDINATES (MOST RELIABLE)
-}
+scroll_constraints:
+  require_test_step_or_offscreen: true
 
-# ⚠️ NAME FIELD QUALITY WARNING
-- **name**: Perfect if available (RARE - Windows native controls only)
-- **name_ods**: Often INCOMPLETE or PARTIAL (e.g., "Force ID" may appear as "Force")
-- **name_ocr**: May have OCR errors or be PARTIAL (e.g., "Button" might be "Buttor")
-- **CRITICAL**: Use names as HINTS only, but TRUST COORDINATES + SPATIAL CONTEXT
+wait_constraints:
+  require_ui_state_change_or_response: true
 
-# CRITICAL ELEMENT SELECTION ALGORITHM
+matching_priority[5]:
+  1,spatial_analysis
+  2,exact_name_match
+  3,partial_match_ods_ocr
+  4,row_based_selection
+  5,empty_if_not_found
 
-## Step 1: Extract Target Keywords from CURRENT test_step ONLY
-Example: "Click dropdown next to Force ID"
-→ Keywords: ["dropdown", "Force", "ID"]
-→ Reference: "Force ID" (or partial like "Force")
-→ Spatial: "next to" (RIGHT direction)
+spatial_analysis_rules:
+  use_first_candidate_only: true
+  use_exact_center: true
+  ignore_all_other_matching: true
 
-⚠️ IGNORE any other steps or future actions. Focus ONLY on current test_step!
+exact_name_rules:
+  match_field: name
+  case_insensitive: true
 
-## Step 2: Check for spatial_analysis (PRIMARY METHOD)
-If spatial_analysis is provided in input, USE IT as your PRIMARY guide:
-- reference_label: The label mentioned in test_step (may be partial match)
-- reference_location: Coordinates of the label
-- spatial_direction: Direction to search (right, left, above, below, near, same_row, same_column)
-- nearby_candidates: Elements in that direction (sorted by distance)
-- hint: Human-readable description
+partial_matching:
+  sources[2]: name_ods,name_ocr
+  requires_coordinate_sense: true
+  min_confidence: 0.8
 
-**Supported Directions:**
-- **RIGHT**: "next to", "beside", "right of", "to the right of", "adjacent to"
-- **LEFT**: "left of", "to the left of", "on the left of"
-- **ABOVE**: "above", "over", "top of", "upper"
-- **BELOW**: "below", "under", "beneath", "bottom of", "lower"
-- **NEAR**: "near", "close to", "around", "nearby"
-- **SAME_ROW**: "same row as"
-- **SAME_COLUMN**: "same column as"
+row_based_selection:
+  conditions[3]: label_exists, same_row(|y_label - y| ≤ 10), control_is_right_side
+  allowed_generic_names: "",Image,Checkmark,formViewField,BoolAttributeView
+  strategy: choose_nearest_x_distance
+  note: generic_elements_only_clickable_in_row_based_selection
 
-**Algorithm when spatial_analysis exists:**
-1. Review spatial_direction field
-2. Review nearby_candidates list (pre-filtered, sorted by distance)
-3. Select FIRST candidate that is:
-   - NOT a label (no ":" at end)
-   - NOT a column header
-   - Has value-like text or is a control element
-4. Use that candidate's coordinates
+screen_constraints:
+  enforce_bounds: true
+  invalid_if_outside_screen: true
 
-## Step 3: Fallback to Fuzzy Text Matching (if no spatial_analysis)
+not_found_behavior:
+  steps: []
+  reasoning: "Element not found with confidence > 80%"
 
-### ⚠️ ACCEPT PARTIAL MATCHES
-- "Force" CAN match "Force ID"
-- "Active" CAN match "Active status"
-- "ID" CAN match "Force ID dropdown"
-- Case insensitive matching
-- ANY keyword overlap is acceptable
+absolute_rules[12]:
+  1, use_exact_coordinates_only
+  2, never_generate_coordinates
+  3, never_modify_given_coordinates
+  4, never_use_coordinates_outside_screen_bounds
+  5, never_repeat_recent_actions
+  6, no_keyboard_fallback_when_missing_element
+  7, never_infer_from_expected_result
+  8, never_click_center_of_screen
+  9, never_invent_elements
+ 10, never_guess_spatial_relations
+ 11, never_click_generic_elements_outside_row_based_selection
+ 12, return_empty_steps_if_unsure
 
-### Search Priority (IN THIS ORDER):
-1. **Partial match on "name" field** (if available)
-   - ✅ "Force" matches element with name="Force ID"
-   
-2. **Partial match on "name_ods" field** (OmniParser)
-   - ✅ "Force" matches element with name_ods="Force"
-   - ⚠️ name_ods is often incomplete, so be tolerant
-   
-3. **Partial match on "name_ocr" field** (OCR)
-   - ✅ "ID" matches element with name_ocr="Force ID"
-   
-4. **Keyword overlap**
-   - Split target into words
-   - Match if ANY word appears in element name
-   - ✅ "dropdown" in test_step matches name_ods="Force" if nearby
+retry_context:
+  attempt1: WinDriver (strict, exact only)
+  attempt2: ODS (enhanced, partial + row-based allowed)
 
-5. **Coordinate-based reasoning**
-   - If multiple partial matches, choose closest to expected position
-   - Prefer elements with larger clickable area
-   - Validate coordinates are within screen bounds
+notes[7]:
+  coordinates_always_accurate
+  spatial_analysis_highest_priority
+  ocr_ods_text_may_be_incomplete
+  generic_elements_often_true_controls
+  focus_only_on_current_test_step
+  reasoning_cannot_reference_rules_system_or_prompt
+  precision_over_creativity
 
-### Priority 1b: CRITICAL - Spatial phrase detected but NO spatial_analysis
+example_not_found_json:
+  action_id: step_x
+  coords_space: physical
+  steps[]
+  reasoning: "Target element not found"
 
-⚠️ **If test_step contains spatial phrases (next to, beside, etc.) BUT spatial_analysis is NOT provided:**
-
-This means the reference label was NOT FOUND in current state.
-
-→ Return EMPTY STEPS: {"steps": []}
-→ Reasoning: "Spatial relationship detected but reference not found. Waiting for ODS retry."
-
-## Step 4: REJECT These Elements (Even if text matches)
-
-❌ REJECT: Generic UI labels
-- "View", "Text", "Line", "ImageView" (container types)
-- "Name", "Description", "Status" (column headers)
-
-❌ REJECT: Internal identifiers
-- "uiDataValue", "qMenuBarMenu" (internal field names)
-- "Default IME", "MSCTFIME UI" (system components)
-
-❌ REJECT: Off-screen elements
-- Elements at (0, 0) unless confirmed valid
-- Elements outside screen bounds
-
-❌ REJECT: Labels when looking for interactive elements
-- Text ending with ":"
-- Column headers in tables
-
-## Step 5: ELEMENT NOT FOUND → RETURN EMPTY STEPS
-❌ If still no match found, DO NOT use keyboard shortcuts as fallback
-❌ DO NOT guess or estimate coordinates
-✅ Return {"steps": [], "reasoning": "Target element 'X' not found in current state"}
-
-# OUTPUT SCHEMA
-{
-  "action_id": "step_<timestamp>",
-  "coords_space": "physical",
-  "steps": [
-    // EMPTY ARRAY if element not found with reasonable confidence
-    // OR click at exact point if found
-    {"type": "click", "button": "left", "click_count": 1, 
-     "target": {"point": {"x": 1561, "y": 797}}},
-    
-    // WAIT after UI changes
-    {"type": "wait", "ms": 800},
-    
-    // TYPE text (only if element found and focused)
-    {"type": "type", "text": "search query", "delay_ms": 30, "enter": false},
-    
-    // KEY_COMBO (only for confirmed shortcuts, not fallbacks)
-    {"type": "key_combo", "combo": ["ctrl", "o"]},
-    
-    // Other actions: drag, scroll, move (rarely needed)
-  ],
-  "reasoning": "Brief explanation: HOW you found the element (spatial/partial/coordinate match) - max 100 words"
-}
-
-# CRITICAL RULES - READ CAREFULLY
-1. Output MUST be valid JSON (no markdown fences)
-2. ⚠️ **COORDINATES > TEXT MATCHING** - Always prioritize spatial context
-3. ⚠️ **ACCEPT PARTIAL/INCOMPLETE NAMES** - "Force" can match "Force ID"
-4. When spatial_analysis is provided, ALWAYS use it as PRIMARY guide
-5. Use spatial_direction to understand the relationship
-6. Select FIRST candidate from nearby_candidates unless specific reason not to
-7. Use ONLY coordinates from current_state elements OR spatial_analysis.nearby_candidates
-8. ALL coordinates must be within screen bounds
-9. Max 24 steps per plan
-10. ⚠️ CRITICAL: If element NOT FOUND with reasonable confidence → Return EMPTY steps
-11. ⚠️ CRITICAL: Focus ONLY on current test_step, ignore other steps
-12. DO NOT repeat actions from recent_actions (unless they failed)
-13. NEVER use keyboard shortcuts as fallback when element not found
-
-# EXAMPLES OF ACCEPTABLE PARTIAL MATCHES
-
-**Example 1: Partial name match**
-- test_step: "Click Force ID dropdown"
-- current_state has: {"name_ods": "Force", "center": {"x": 100, "y": 200}}
-- ✅ ACCEPT: Click at (100, 200) - "Force" is partial match for "Force ID"
-- reasoning: "Found partial match: 'Force' matches target 'Force ID' at coordinates (100, 200)"
-
-**Example 2: Spatial match with partial name**
-- test_step: "Click dropdown next to Force ID"
-- spatial_analysis: {"reference_label": "Force", "nearby_candidates": [{"name_ods": "", "center": {"x": 150, "y": 200}}]}
-- ✅ ACCEPT: Click at (150, 200) - spatial context is PRIMARY
-- reasoning: "Found via spatial analysis: element RIGHT of 'Force' label"
-
-**Example 3: Keyword overlap**
-- test_step: "Select Active status"
-- current_state has: {"name_ocr": "Active", "center": {"x": 300, "y": 400}}
-- ✅ ACCEPT: Click at (300, 400) - "Active" is key word match
-- reasoning: "Found keyword match: 'Active' at coordinates (300, 400)"
-
-**Example 4: Empty name but correct position**
-- test_step: "Click button next to Name label"
-- spatial_analysis finds element RIGHT of "Name" with name_ods=""
-- ✅ ACCEPT: Use coordinates from nearby_candidates[0]
-- reasoning: "Found via spatial analysis: interactive element RIGHT of 'Name' label (name may be empty but position is correct)"
-
-# OUTPUT FORMAT
-Return ONLY the JSON object, no other text:
-{
-  "action_id": "step_<timestamp>",
-  "coords_space": "physical",
-  "steps": [...],  // EMPTY if element not found
-  "reasoning": "Found via [spatial/partial/coordinate] match: ..."
-}
+reminder:
+  output_must_be_valid_json_only
+  no_text_before_or_after_json
+  task_is_planning_exact_physical_interactions
 """
-
-DEFAULT_SYSTEM_PROMPT = PRODUCTION_SYSTEM_PROMPT
 
 # ============================================================================
 # JSON SCHEMA
@@ -323,6 +205,7 @@ AGEN_TEST_PLAN_SCHEMA: Dict[str, Any] = {
                             },
                         },
                         "required": ["type", "combo"],
+                        "additionalProperties": False,
                     },
                     {  # WAIT
                         "properties": {
@@ -467,11 +350,11 @@ class ScenarioResult:
 
 
 # ============================================================================
-# LLM BACKEND - WITH OLLAMA SUPPORT
+# LLM BACKEND - WITH ENHANCED VALIDATION
 # ============================================================================
 
 class LLMBackend:
-    """LLM-based action planner backend with Ollama and OpenRouter support"""
+    """LLM-based action planner backend with enhanced validation"""
     
     _SCREENSHOT_KEYS = {"screenshot", "screenshot_png", "screenshot_jpg", "screenshot_base64", "b64"}
 
@@ -480,18 +363,18 @@ class LLMBackend:
     # ========================================================================
     
     _SPATIAL_PATTERNS = {
-    "right": [
-        r'(?:dropdown|button|field|checkbox|menu|element|control)\s+(?:on the right of|to the right of|right of|at the right side of)\s+(.+?)(?:\s*$|,)',
-        r'(?:on the right of|to the right of|right of|at the right side of)\s+(.+?)(?:\s*$|,)',
-    ],
-    "left": [
-        r'(?:dropdown|button|field|checkbox|menu|element|control)\s+(?:on the left of|to the left of|left of|at the left side of)\s+(.+?)(?:\s*$|,)',
-        r'(?:on the left of|to the left of|left of|at the left side of)\s+(.+?)(?:\s*$|,)',
-    ],
-    "near": [ 
-        r'(?:dropdown|button|field|checkbox|menu|element|control)\s+(?:next to|beside|near|close to|around|nearby|adjacent to)\s+(.+?)(?:\s*$|,)',
-        r'(?:next to|beside|near|close to|around|nearby|adjacent to)\s+(.+?)(?:\s*$|,)',
-    ],
+        "right": [
+            r'(?:dropdown|button|field|checkbox|menu|element|control)\s+(?:on the right of|to the right of|right of|at the right side of)\s+(.+?)(?:\s*$|,)',
+            r'(?:on the right of|to the right of|right of|at the right side of)\s+(.+?)(?:\s*$|,)',
+        ],
+        "left": [
+            r'(?:dropdown|button|field|checkbox|menu|element|control)\s+(?:on the left of|to the left of|left of|at the left side of)\s+(.+?)(?:\s*$|,)',
+            r'(?:on the left of|to the left of|left of|at the left side of)\s+(.+?)(?:\s*$|,)',
+        ],
+        "near": [ 
+            r'(?:dropdown|button|field|checkbox|menu|element|control)\s+(?:next to|beside|near|close to|around|nearby|adjacent to)\s+(.+?)(?:\s*$|,)',
+            r'(?:next to|beside|near|close to|around|nearby|adjacent to)\s+(.+?)(?:\s*$|,)',
+        ],
         "above": [
             r'(?:dropdown|button|field|checkbox|menu|element|control|label)\s+(?:above|over|top of|upper)\s+(.+?)(?:\s*$|,)',
             r'(?:above|over|top of|upper)\s+(.+?)(?:\s*$|,)',
@@ -520,7 +403,7 @@ class LLMBackend:
         llm_base_url: str = "http://localhost:11434",
         llm_api_key: Optional[str] = None,
         *,
-        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+        system_prompt: str = SYSTEM_PROMPT,
         max_attempts: int = 2,
         post_action_delay: float = 0.5,
         sut_timeout: float = 50.0,
@@ -532,8 +415,8 @@ class LLMBackend:
         client_title: str = "AgenTest LLM Backend",
         omit_large_blobs: bool = True,
         enforce_json_response: bool = True,
-        json_schema: Optional[Dict[str, Any]] = None,
-    ) -> None:
+        ) -> None:
+
         # Validation
         if not llm_model:
             raise ValueError("llm_model is required")
@@ -574,9 +457,9 @@ class LLMBackend:
         self.http_referrer = http_referrer
         self.client_title = client_title
         self.omit_large_blobs = omit_large_blobs
-        self.json_schema = json_schema
-        
+                
         self._last_element_count = 0
+        self._previous_state_hash: Optional[str] = None  # For UI change detection
 
     @classmethod
     def from_env(cls, **overrides: Any) -> "LLMBackend":
@@ -924,7 +807,7 @@ class LLMBackend:
         recent_actions: Optional[List[Dict[str, Any]]] = None,
         temperature: float = 0.1,
     ) -> RunResult:
-        """Run a single test step with 2-attempt strategy"""
+        """Run a single test step with enhanced validation"""
         history_payload: List[Dict[str, Any]] = list(recent_actions or [])
         actions_log: List[ActionExecutionLog] = []
         last_plan: Optional[Dict[str, Any]] = None
@@ -985,14 +868,67 @@ class LLMBackend:
             steps = plan.get("steps", [])
             reasoning = plan.get("reasoning", "")
 
-            logger.info("  Plan: %d steps, reasoning: %s", len(steps), reasoning[:100])
+            # ENHANCED LOGGING
+            logger.info("=" * 80)
+            logger.info("📋 TEST STEP: %s", test_step)
+            logger.info("🎯 EXPECTED: %s", expected_result[:100])
+            logger.info("🤖 LLM PLAN: %d step(s)", len(steps))
+            logger.info("💭 LLM REASONING: %s", reasoning[:150])
+            
+            if steps:
+                logger.info("📍 ACTIONS TO EXECUTE:")
+                for i, step in enumerate(steps, 1):
+                    step_type = step.get("type", "unknown")
+                    if step_type == "click":
+                        point = step.get("target", {}).get("point", {})
+                        button = step.get("button", "left")
+                        count = step.get("click_count", 1)
+                        logger.info("  %d. CLICK(%s, count=%d) at (%s, %s)", 
+                                  i, button, count, 
+                                  point.get('x', '?'), point.get('y', '?'))
+                    elif step_type == "type":
+                        text = step.get("text", "")[:30]
+                        logger.info("  %d. TYPE '%s...'", i, text)
+                    elif step_type == "wait":
+                        ms = step.get("ms", 0)
+                        logger.info("  %d. WAIT %dms", i, ms)
+                    elif step_type == "key_combo":
+                        combo = step.get("combo", [])
+                        logger.info("  %d. KEY_COMBO %s", i, "+".join(combo))
+                    else:
+                        logger.info("  %d. %s", i, step_type.upper())
+            else:
+                logger.warning("  ⚠️  NO ACTIONS (empty steps)")
+                logger.warning("  💭 Reason: %s", reasoning)
+                
+                # Empty steps handling
+                if attempt < self.max_attempts:
+                    logger.info("  → Retrying with ODS enhanced detection...")
+                    continue
+                else:
+                    failure_message = f"Element not found after {self.max_attempts} attempts. LLM reasoning: {reasoning}"
+                    logger.error("❌ FAILED: %s", failure_message)
+                    
+                    return RunResult(
+                        status="failed",
+                        attempts=attempt,
+                        actions=actions_log,
+                        final_state=state,
+                        last_plan=plan,
+                        reason=failure_message,
+                    )
+            
+            logger.info("=" * 80)
+            
+            # State before action
+            state_before = state
 
             ack = await self._send_action(plan)
             log_entry = ActionExecutionLog(
                 action_id=plan.get("action_id", ""),
                 plan=plan,
                 ack=ack,
-                state_before=state,
+                state_before=state_before,
             )
             actions_log.append(log_entry)
             history_payload.append(self._summarise_for_prompt(log_entry))
@@ -1014,8 +950,45 @@ class LLMBackend:
             final_state = await self._fetch_state_safe(state, attempt_number=attempt)
             log_entry.state_after = final_state
             
-            if self._expected_holds(final_state, expected_result):
-                logger.info("✓ Success: Expected result holds after attempt %d (%s)", attempt, detection_method)
+            # ✅ UI change detection
+            ui_changed, change_magnitude = self._detect_ui_change(state_before, final_state)
+            
+            logger.info("🔍 VALIDATING EXPECTED RESULT...")
+            logger.info("  Expected: %s", expected_result[:100])
+            logger.info("  UI changed: %s (magnitude: %.1f%%)", 
+                       "YES" if ui_changed else "NO", 
+                       change_magnitude * 100)
+            
+            validation_passed = self._expected_holds(
+                final_state, 
+                expected_result, 
+                plan,
+                state_before=state_before 
+            )
+            
+            if validation_passed:
+                visibility_keywords = ["visible", "appears", "shown", "displayed", "open", "shows", "loaded"]
+                expects_visibility = any(kw in expected_result.lower() for kw in visibility_keywords)
+                
+                if expects_visibility and not ui_changed:
+                    logger.warning("⚠️ Expected visibility but UI did not change!")
+                    logger.warning("  Change magnitude: %.1f%%", change_magnitude * 100)
+                    
+                    if attempt >= self.max_attempts:
+                        return RunResult(
+                            status="failed",
+                            attempts=attempt,
+                            actions=actions_log,
+                            final_state=final_state,
+                            last_plan=plan,
+                            reason="Expected UI visibility change but state remained same",
+                        )
+                    else:
+                        logger.info("  → Retrying with ODS...")
+                        continue
+                
+                logger.info("✓ SUCCESS: Expected result achieved")
+                logger.info("  Validation: PASS ✓")
                 return RunResult(
                     status="passed",
                     attempts=attempt,
@@ -1025,6 +998,7 @@ class LLMBackend:
                     reason=f"Expected result achieved (detection: {detection_method})",
                 )
             else:
+                logger.info("  Validation: FAIL ✗")
                 logger.info("  Expected result not yet achieved")
                 
                 if attempt >= self.max_attempts:
@@ -1037,7 +1011,7 @@ class LLMBackend:
                         reason=f"Expected result not achieved after {attempt} attempts (WinDriver + ODS)",
                     )
                 
-                logger.info("  Retrying with ODS enhanced detection...")
+                logger.info("  → Retrying with ODS enhanced detection...")
 
         logger.warning("✗ Failed: Exhausted %d attempts", self.max_attempts)
         return RunResult(
@@ -1117,7 +1091,49 @@ class LLMBackend:
             raise SUTCommunicationError(message) from exc
 
     # ========================================================================
-    # LLM COMMUNICATION - WITH OLLAMA SUPPORT
+    # UI CHANGE DETECTION
+    # ========================================================================
+    
+    def _compute_state_hash(self, state: Dict[str, Any]) -> str:
+        """Compute hash of UI state for change detection"""
+        elements = state.get("elements", [])
+        
+        # Hash based on element names and positions
+        state_signature = []
+        for elem in elements:
+            name = elem.get("name") or elem.get("name_ods") or elem.get("name_ocr") or ""
+            center = elem.get("center", {})
+            state_signature.append(f"{name}@{center.get('x', 0)},{center.get('y', 0)}")
+        
+        signature_str = "|".join(sorted(state_signature))
+        return hashlib.md5(signature_str.encode()).hexdigest()
+    
+    def _detect_ui_change(
+        self, 
+        state_before: Dict[str, Any], 
+        state_after: Dict[str, Any]
+    ) -> Tuple[bool, float]:
+        """Detect if UI changed significantly after action"""
+        
+        hash_before = self._compute_state_hash(state_before)
+        hash_after = self._compute_state_hash(state_after)
+        
+        if hash_before == hash_after:
+            return False, 0.0
+        
+        # Calculate change magnitude
+        elems_before = len(state_before.get("elements", []))
+        elems_after = len(state_after.get("elements", []))
+        
+        if elems_before == 0:
+            change_ratio = 1.0 if elems_after > 0 else 0.0
+        else:
+            change_ratio = abs(elems_after - elems_before) / elems_before
+        
+        return True, change_ratio
+
+    # ========================================================================
+    # LLM COMMUNICATION 
     # ========================================================================
 
     async def _request_plan(
@@ -1153,53 +1169,14 @@ class LLMBackend:
         self,
         messages: List[Dict[str, Any]],
         temperature: float,
-) ->     Dict[str, Any]:
+    ) -> Dict[str, Any]:
         """Request plan from Ollama (local) with JSON Schema enforcement"""
-        
-        # ============ JSON SCHEMA ENFORCEMENT ============
-        json_schema = {
-            "type": "object",
-            "required": ["action_id", "coords_space", "steps", "reasoning"],
-            "properties": {
-                "action_id": {"type": "string"},
-                "coords_space": {"type": "string", "enum": ["physical"]},
-                "steps": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["type"],
-                        "properties": {
-                            "type": {"type": "string", "enum": ["click", "wait", "type", "key_combo"]},
-                            "button": {"type": "string", "enum": ["left", "right", "middle"]},
-                            "click_count": {"type": "integer", "minimum": 1, "maximum": 2},
-                            "target": {
-                                "type": "object",
-                                "required": ["point"],
-                                "properties": {
-                                    "point": {
-                                        "type": "object",
-                                        "required": ["x", "y"],
-                                        "properties": {
-                                            "x": {"type": "number"},
-                                            "y": {"type": "number"}
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                "reasoning": {"type": "string"}
-            }
-        }
-        logger.info("📋 Using JSON schema enforcement for Ollama")
-        # =================================================
-        
+
         body = {
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "format": json_schema,  # ← JSON SCHEMA!
+            "format": AGEN_TEST_PLAN_SCHEMA,
             "options": {
                 "temperature": temperature,
                 "num_predict": self.max_tokens,
@@ -1210,8 +1187,6 @@ class LLMBackend:
         
         logger.error("🚀 SENDING TO OLLAMA:")
         logger.error("URL: %s", url)
-        logger.error("Body keys: %s", list(body.keys()))
-        logger.error("Format field: %s", str(body.get("format", "MISSING"))[:200])
         logger.error("=" * 80)
         
         try:
@@ -1237,8 +1212,8 @@ class LLMBackend:
             logger.error(message)
             raise LLMCommunicationError(message) from exc
         
-        logger.error("🔍 RAW LLM RESPONSE (first 500 chars):")
-        logger.error(content[:500])
+        logger.error("🔍 RAW LLM RESPONSE:")
+        logger.error(content)
         logger.error("=" * 80)
     
         if not content:
@@ -1293,6 +1268,11 @@ class LLMBackend:
             
             try:
                 content = self._extract_llm_content_openrouter(data)
+
+                logger.error("🔍 RAW LLM RESPONSE (OpenRouter):")
+                logger.error(content)
+                logger.error("=" * 80) 
+
             except PlanParseError:
                 if self.max_tokens > 400:
                     saved = self.max_tokens
@@ -1342,14 +1322,13 @@ class LLMBackend:
         }
         
         if enforce_json and self.enforce_json_response:
-            if self.json_schema:
-                body["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {"name": "AgenTestPlan", "schema": self.json_schema},
-                }
-            else:
-                body["response_format"] = {"type": "json_object"}
-        
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "AgenTestPlan", 
+                    "schema": AGEN_TEST_PLAN_SCHEMA  # ← DIREKT GLOBAL
+            },
+        }
         return body
 
     def _extract_llm_content_openrouter(self, data: Dict[str, Any]) -> str:
@@ -1431,9 +1410,9 @@ class LLMBackend:
                        spatial_hints["reference_label"])
         
         if recent_actions:
-        # Ollama için recent_actions'ı daha da kısalt (JSON bozulmasını önle)
+            # Ollama için recent_actions'ı kısalt
             if self.llm_provider == "ollama":
-                payload["recent_actions"] = recent_actions[-1:]  # Sadece son 1
+                payload["recent_actions"] = recent_actions[-1:]
             else:
                 payload["recent_actions"] = recent_actions[-3:] 
 
@@ -1465,7 +1444,7 @@ class LLMBackend:
         ]
 
     # ========================================================================
-    # PLAN PARSING (remains the same as original)
+    # PLAN PARSING
     # ========================================================================
 
     def _parse_plan(self, content: str) -> Dict[str, Any]:
@@ -1749,56 +1728,145 @@ class LLMBackend:
         return None
 
     # ========================================================================
-    # EXPECTED RESULT CHECK
+    # EXPECTED RESULT VALIDATION
     # ========================================================================
 
-    def _expected_holds(self, state: Dict[str, Any], expected_result: str) -> bool:
-        """Enhanced expected result checking with fuzzy tolerance"""
+    def _expected_holds(
+        self, 
+        state: Dict[str, Any], 
+        expected_result: str,
+        plan_executed: Dict[str, Any],
+        state_before: Optional[Dict[str, Any]] = None
+) ->     bool:
+        """Enhanced validation: Check BOTH text match AND action completion"""
+
         if not expected_result:
             return False
-        
+
+        steps_executed = plan_executed.get("steps", [])
+
+        # Empty steps = NO ACTION = FAIL
+        if not steps_executed:
+            logger.warning("❌ No actions executed, cannot validate expected result")
+            return False
+
+        #  Check if meaningful action was taken
+        meaningful_action_types = {"click", "type", "key_combo", "drag"}
+        has_meaningful_action = any(
+            step.get("type") in meaningful_action_types 
+            for step in steps_executed
+        )
+
+        if not has_meaningful_action:
+            logger.warning("❌ Only passive actions (wait) executed, no meaningful interaction")
+            return False
+
         text = expected_result.lower().strip()
         elems = (state or {}).get("elements", [])
-        
+
         if not elems:
             return False
-        
-        # ✅ Tüm name kaynaklarını topla (name, name_ods, name_ocr)
+
+        # Collect all name sources
         visible_names = []
         for e in elems:
             for key in ["name", "name_ods", "name_ocr"]:
                 name = (e.get(key) or "").strip()
                 if name:
                     visible_names.append(name.lower())
-        
-        # Dialog detection
-        has_cancel = any("cancel" in name for name in visible_names)
-        has_action_button = any(name in ["ok", "run", "yes", "apply"] for name in visible_names)
-        dialog_detected = (has_cancel and has_action_button)
-        
-        if dialog_detected:
-            logger.debug("⚠️ Confirmation dialog detected")
-            process_states = {"running", "started", "active", "executing", "processing"}
-            mentions_process = any(state in text for state in process_states)
-            if mentions_process:
-                logger.info("✗ Dialog present but expected mentions process state → NOT met")
+
+        # ========================================================================
+        # AND LOGIC
+        # ========================================================================
+        if " and " in text:
+            conditions = text.split(" and ")
+            logger.debug("  → Expected has multiple conditions: %d", len(conditions))
+
+            all_conditions_met = True
+            for i, condition in enumerate(conditions, 1):
+                condition = condition.strip()
+                logger.debug("    Condition %d: %s", i, condition[:50])
+
+                # Check each condition separately
+                condition_met = self._check_single_condition(
+                    condition, 
+                    visible_names, 
+                    state, 
+                    state_before
+                )
+
+                if not condition_met:
+                    logger.info("❌ Condition %d NOT met: %s", i, condition[:50])
+                    all_conditions_met = False
+                    break
+                
+            if all_conditions_met:
+                logger.info("✓ Expected HOLDS: All %d conditions met", len(conditions))
+                return True
+            else:
                 return False
-        
+
+        closing_keywords = ["closes", "closed", "disappears", "disappeared", "hidden", "gone"]
+        expects_closing = any(kw in text for kw in closing_keywords)
+
+        if expects_closing:
+            logger.debug("  → Expected result mentions closing/disappearing")
+            closing_targets = self._extract_closing_targets(text)
+            targets_absent = self._verify_targets_absent(closing_targets, visible_names)
+
+            if targets_absent:
+                logger.info("✓ Expected HOLDS: Target elements successfully closed/removed")
+                return True
+            else:
+                logger.info("❌ Expected closing not achieved: targets still present in UI")
+                return False
+
+        # Check for visibility expectations
+        visibility_keywords = ["visible", "appears", "shown", "displayed", "open", "opened", "shows"]
+        expects_visibility = any(kw in text for kw in visibility_keywords)
+
+        if expects_visibility:
+            logger.debug("  → Expected result mentions visibility, checking targets")
+            target_tokens = self._extract_visibility_targets(text)
+            targets_visible = self._verify_targets_visible(target_tokens, visible_names)
+
+            if not targets_visible:
+                logger.info("❌ Expected visibility not achieved: targets not found in UI")
+                return False
+
         # Quoted items check
         quoted_pattern = r'["\']([^"\']+)["\']'
         quoted_items = re.findall(quoted_pattern, expected_result)
-        
+
+
         if quoted_items:
             all_found = all(
                 any(quoted.lower() in name for name in visible_names)
                 for quoted in quoted_items
             )
-            
+
             if all_found:
+                selection_keywords = ["selected", "highlighted", "active", "checked"]
+                expects_selection = any(kw in expected_result.lower() for kw in selection_keywords)
+
+                if expects_selection:
+                    logger.debug("  → Expected mentions selection, verifying UI change")
+
+                    if state_before is None:
+                        logger.warning("⚠️ Cannot verify UI change: state_before not provided")
+                    else:
+                        ui_changed, change_mag = self._detect_ui_change(state_before, state)
+
+                        if not ui_changed:
+                            logger.info("❌ Quoted item found but NO UI change for selection")
+                            return False
+                        else:
+                            logger.debug("  ✓ UI changed for selection (%.1f%%)", change_mag * 100)
+
                 process_states = {"running", "started", "active", "stopped", "paused", "executing"}
                 expected_lower = expected_result.lower()
                 mentioned_process_states = [s for s in process_states if s in expected_lower]
-                
+
                 if mentioned_process_states:
                     state_found = any(s in name for s in mentioned_process_states for name in visible_names)
                     if state_found:
@@ -1809,10 +1877,8 @@ class LLMBackend:
                 else:
                     logger.info("✓ Expected HOLDS: All quoted items present")
                     return True
-        
-        # ✅ FUZZY TOKENIZATION - Typo toleranslı
+                
         def tokenize_fuzzy(s: str) -> Set[str]:
-            """Tokenize with typo tolerance"""
             tokens = set(re.findall(r'\b\w{3,}\b', s.lower()))
             stopwords = {
                 "the", "is", "are", "was", "were", "been", "being",
@@ -1827,26 +1893,27 @@ class LLMBackend:
                 "it", "that", "which", "who", "where", "when", "how",
             }
             return tokens - stopwords
-        
+    
         expected_tokens = tokenize_fuzzy(text)
         visible_tokens = tokenize_fuzzy(" ".join(visible_names))
-        
+
         if not expected_tokens:
             return any(word in name for word in text.split() if len(word) > 3 for name in visible_names)
-        
-        # ✅ EXACT MATCH
+
+        # Exact match
         overlap = expected_tokens & visible_tokens
         coverage = len(overlap) / len(expected_tokens) if expected_tokens else 0
-        
-        logger.debug("Keyword coverage: %.1f%% (%d/%d)", coverage * 100, len(overlap), len(expected_tokens))
-        
-        if coverage >= 0.60:  # ← 0.70'ten 0.60'a düşürdüm
+
+        logger.debug("  Keyword coverage: %.1f%% (%d/%d)", coverage * 100, len(overlap), len(expected_tokens))
+
+        threshold = 0.85 if expects_visibility else 0.75
+
+        if coverage >= threshold:
             logger.info("✓ Expected HOLDS: %.1f%% keyword match", coverage * 100)
             return True
-        
-        # ✅ FUZZY MATCH - Typo toleranslı
-        def fuzzy_token_match(expected_tokens: Set[str], visible_tokens: Set[str], threshold: float = 0.75) -> Tuple[bool, float]:
-            """Match tokens with typo tolerance"""
+
+        # Fuzzy token match
+        def fuzzy_token_match(expected_tokens: Set[str], visible_tokens: Set[str], threshold: float = 0.80) -> Tuple[bool, float]:
             if not expected_tokens:
                 return False, 0.0
             
@@ -1854,64 +1921,72 @@ class LLMBackend:
             for exp_token in expected_tokens:
                 best_ratio = 0.0
                 for vis_token in visible_tokens:
-                    # Levenshtein distance approximation
                     ratio = SequenceMatcher(None, exp_token, vis_token).ratio()
                     if ratio > best_ratio:
                         best_ratio = ratio
                 
-                # Accept if > 75% similar (typo tolerance)
                 if best_ratio >= threshold:
                     matched += 1
             
             fuzzy_coverage = matched / len(expected_tokens)
-            return fuzzy_coverage >= 0.60, fuzzy_coverage
+            return fuzzy_coverage >= 0.75, fuzzy_coverage
         
-        fuzzy_match, fuzzy_coverage = fuzzy_token_match(expected_tokens, visible_tokens, threshold=0.75)
+        fuzzy_match, fuzzy_coverage = fuzzy_token_match(expected_tokens, visible_tokens, threshold=0.80)
         
         if fuzzy_match:
-            logger.info("✓ Expected HOLDS: %.1f%% fuzzy keyword match (typo-tolerant)", fuzzy_coverage * 100)
+            logger.info("✓ Expected HOLDS: %.1f%% fuzzy keyword match", fuzzy_coverage * 100)
             return True
         
-        # ✅ PARTIAL STRING MATCH
+        # Smart fuzzy match with stricter threshold
         def smart_fuzzy_match(
             expected_text: str,
             visible_items: List[str],
-            threshold: float = 0.70  # ← 0.80'den 0.70'e düşürdüm
+            require_action_context: bool = False
         ) -> Tuple[bool, float, str]:
+            #  Extract action verbs
+            action_verbs = ["selected", "clicked", "opened", "closed", "changed", "entered", "shows"]
+            has_action_verb = any(verb in expected_text.lower() for verb in action_verbs)
+            
+            #  Stricter threshold if action mentioned
+            threshold = 0.85 if (has_action_verb or require_action_context) else 0.75
+            
+            if has_action_verb:
+                logger.debug("  → Expected mentions action, requiring stricter match (85%%)")
+            
             best_match = 0.0
             best_item = ""
             
-            process_states = {
-                "running", "stopped", "paused", "started", "finished",
-                "active", "inactive", "executing", "completed", "ready"
-            }
-            
-            expected_lower = expected_text.lower()
-            mentioned_process = [s for s in process_states if s in expected_lower]
+            # Extract expected entities
+            expected_entities = self._extract_key_entities(expected_text)
             
             clean_expected = re.sub(r'\b(it is|that|the|observed|shown|displayed)\b', '', expected_text)
             clean_expected = re.sub(r'\s+', ' ', clean_expected).strip()
             
             for item in visible_items:
                 item_lower = item.lower()
-                ratio = SequenceMatcher(None, clean_expected.lower(), item_lower).ratio()
                 
-                if clean_expected.lower() in item_lower or item_lower in clean_expected.lower():
-                    ratio = max(ratio, 0.70)  # ← 0.75'ten 0.70'e
+                # Check entity coverage
+                entities_found = sum(
+                    1 for entity in expected_entities 
+                    if entity.lower() in item_lower
+                )
                 
-                if mentioned_process:
-                    has_process_state = any(s in item_lower for s in mentioned_process)
-                    if not has_process_state:
-                        ratio *= 0.6
+                entity_coverage = entities_found / len(expected_entities) if expected_entities else 0
                 
-                if ratio > best_match:
-                    best_match = ratio
+                # Text similarity
+                text_ratio = SequenceMatcher(None, clean_expected.lower(), item_lower).ratio()
+                
+                # Combined score: text similarity + entity coverage
+                combined_score = (text_ratio * 0.6) + (entity_coverage * 0.4)
+                
+                if combined_score > best_match:
+                    best_match = combined_score
                     best_item = item
             
             matched = best_match >= threshold
             return matched, best_match, best_item
         
-        fuzzy_matched, fuzzy_score, matched_item = smart_fuzzy_match(text, visible_names, threshold=0.70)
+        fuzzy_matched, fuzzy_score, matched_item = smart_fuzzy_match(text, visible_names, require_action_context=expects_visibility)
         
         if fuzzy_matched:
             logger.info("✓ Expected HOLDS: Fuzzy match '%.30s...' (%.1f%%)", matched_item, fuzzy_score * 100)
@@ -1925,23 +2000,305 @@ class LLMBackend:
             if has_stop and not has_run:
                 logger.info("✓ Expected HOLDS: Run button changed to Stop")
                 return True
-            
-            current_count = len(elems)
-            previous_count = self._last_element_count
-            
-            if previous_count > 0:
-                change_ratio = (current_count - previous_count) / max(previous_count, 1)
-                if change_ratio > 0.10:
-                    logger.info("✓ Expected HOLDS: Element count increased %.1f%%", change_ratio * 100)
-                    self._last_element_count = current_count
-                    return True
-        
-        self._last_element_count = len(elems)
         
         logger.debug("✗ Expected NOT met")
         logger.debug("  Expected tokens: %s", expected_tokens)
         logger.debug("  Visible tokens sample: %s", list(visible_tokens)[:20])
         return False
+    
+    # ========================================================================
+    # HELPER FUNCTIONS FOR EXPECTED RESULT VALIDATION
+    # ========================================================================
+
+    def _extract_closing_targets(self, expected_text: str) -> Set[str]:
+        """Extract what elements should close/disappear"""
+        # "Dialog closes" → ["dialog"]
+        closing_keywords = ["closes", "closed", "disappears", "disappeared", "hidden", "gone"]
+
+        # Find text before closing keyword
+        for keyword in closing_keywords:
+            if keyword in expected_text.lower():
+                # Get text before the keyword
+                parts = expected_text.lower().split(keyword)
+                if parts:
+                    target_text = parts[0].strip()
+                    # Extract meaningful words
+                    tokens = set(re.findall(r'\b\w{3,}\b', target_text))
+                    # Remove common words
+                    stopwords = {"the", "is", "are", "was", "and", "or", "will", "should", "must"}
+                    return tokens - stopwords
+
+        return set()
+
+    def _verify_targets_absent(
+        self, 
+        target_tokens: Set[str], 
+        visible_names: List[str]
+    ) -> bool:
+        """Verify that target tokens are NOT present in visible UI (i.e., they closed)"""
+
+        if not target_tokens:
+            # If no specific target mentioned, assume success (general closing)
+            return True
+
+        # Check how many targets are still found
+        found_count = 0
+
+        for token in target_tokens:
+            # Check if token appears in ANY visible element
+            token_found = any(token in visible_name for visible_name in visible_names)
+
+            if token_found:
+                found_count += 1
+                logger.debug("    → '%s' still present in UI", token)
+
+        # Target should be ABSENT (not found)
+        presence_ratio = found_count / len(target_tokens)
+
+        logger.debug("  → Closing check: %d/%d targets still present (%.1f%%)", 
+                    found_count, len(target_tokens), presence_ratio * 100)
+
+        # Consider closed if less than 30% of target keywords still present
+        return presence_ratio < 0.30
+
+    def _extract_visibility_targets(self, expected_text: str) -> Set[str]:
+        """Extract what elements should be visible from expected result"""
+        quoted_items = re.findall(r'["\']([^"\']+)["\']', expected_text)
+        if quoted_items:
+            # Quoted item varsa 
+            tokens = set()
+            for item in quoted_items:
+                tokens.update(re.findall(r'\b\w{3,}\b', item.lower()))
+            return tokens
+
+        # Remove visibility verbs
+        clean = re.sub(
+            r'\b(is|are|be|being|appears?|shown|displayed|visible|open|opened|shows)\b',
+            '',
+            expected_text,
+            flags=re.IGNORECASE
+        )
+
+        clean = re.sub(
+            r'\b(selected|highlighted|active|checked|and)\b',
+            '',
+            clean,
+            flags=re.IGNORECASE
+        )
+
+        # Remove connectors
+        clean = re.sub(r'\b(with|the|a|an)\b', '', clean, flags=re.IGNORECASE)
+
+        # Extract meaningful words (3+ chars)
+        tokens = set(re.findall(r'\b\w{3,}\b', clean.lower()))
+
+        # Remove common stopwords
+        stopwords = {"that", "this", "from", "have", "will", "should", "must", "entity", "item", "row"}
+
+        return tokens - stopwords
+
+    def _verify_targets_visible(
+        self, 
+        target_tokens: Set[str], 
+        visible_names: List[str]
+    ) -> bool:
+        """Verify that target tokens are actually present in visible UI"""
+
+        if not target_tokens:
+            return False
+
+        # Check how many targets are found
+        found_count = 0
+
+        for token in target_tokens:
+            # Check if token appears in ANY visible element
+            token_found = any(token in visible_name for visible_name in visible_names)
+
+            if token_found:
+                found_count += 1
+
+        # Require at least 70% of targets to be visible
+        coverage = found_count / len(target_tokens)
+
+        logger.debug("  → Visibility check: %d/%d targets found (%.1f%%)", 
+                    found_count, len(target_tokens), coverage * 100)
+
+        return coverage >= 0.70
+
+    def _extract_key_entities(self, text: str) -> List[str]:
+        """Extract key entities that should be present"""
+        # Look for quoted items first
+        quoted = re.findall(r'["\']([^"\']+)["\']', text)
+
+        # Look for entity patterns
+        entity_patterns = [
+            r'\b[A-Z][A-Za-z0-9_-]+\b',  # F-35_1, Controls
+            r'\b\w+\s+\w+\s+(?:panel|tab|dialog|window|button)\b',  # player info panel
+        ]
+
+        entities = quoted.copy()
+        for pattern in entity_patterns:
+            entities.extend(re.findall(pattern, text))
+
+        return list(set(entities))
+
+    def _check_single_condition(
+        self,
+        condition: str,
+        visible_names: List[str],
+        state: Dict[str, Any],
+        state_before: Optional[Dict[str, Any]]
+) ->     bool:
+        """Check a single condition from expected result (for AND logic)"""
+
+        # 1. Closing check (önce)
+        closing_keywords = ["closes", "closed", "disappears", "disappeared", "hidden", "gone"]
+        if any(kw in condition for kw in closing_keywords):
+            logger.debug("    → Condition expects closing/disappearing")
+            closing_targets = self._extract_closing_targets(condition)
+            targets_absent = self._verify_targets_absent(closing_targets, visible_names)
+
+            if targets_absent:
+                logger.debug("    ✓ Closing condition passed")
+                return True
+            else:
+                if state_before is not None:
+                    ui_changed, change_mag = self._detect_ui_change(state_before, state)
+                    if ui_changed and change_mag > 0.2:
+                        logger.debug("    ✓ Closing: UI changed significantly (%.1f%%), assuming closed", change_mag * 100)
+                        return True
+
+                logger.debug("    ✗ Closing condition failed (targets still present)")
+                return False
+
+        # 2. Quoted items + selection keywords
+        quoted_pattern = r'["\']([^"\']+)["\']'
+        quoted_items = re.findall(quoted_pattern, condition)
+        quoted_items = [item.replace('\\', '').strip() for item in quoted_items]
+
+
+        # ✅ LOG BURAYA EKLE
+        logger.info("    → Condition: '%s'", condition[:80])
+        logger.info("    → Quoted items found: %s", quoted_items)
+
+        if quoted_items:
+            # Check if quoted items present
+            all_found = all(
+                any(quoted.lower() in name for name in visible_names)
+                for quoted in quoted_items
+            )
+
+            # ✅ LOG BURAYA EKLE
+            logger.info("    → All quoted items found in UI: %s", all_found)
+
+            if not all_found:
+                logger.debug("    → Quoted items not found in condition")
+                return False
+
+            # Selection keyword + UI change check
+            selection_keywords = ["selected", "highlighted", "active", "checked"]
+            has_selection_keyword = any(kw in condition.lower() for kw in selection_keywords)
+
+            # ✅ LOG BURAYA EKLE
+            logger.info("    → Has selection keyword: %s", has_selection_keyword)
+
+            if has_selection_keyword:
+                logger.info("    → Selection keyword detected in condition")
+
+                if state_before is not None:
+                    ui_changed, change_mag = self._detect_ui_change(state_before, state)
+
+                    # ✅ LOG BURAYA EKLE
+                    logger.info("    → UI change check: %s (%.1f%%)", 
+                               "YES" if ui_changed else "NO", 
+                               change_mag * 100)
+
+                    # UI değiştiyse VE quoted item varsa = SUCCESS
+                    if ui_changed and change_mag > 0.20:  # %20+ değişim yeterli
+                        logger.info("    ✓ Selection condition passed (UI changed + quoted found)")
+                        return True
+                    else:
+                        logger.info("    ✗ Selection expected but insufficient UI change (%.1f%% < 20%%)", change_mag * 100)
+                        return False
+                else:
+                    # state_before yoksa sadece quoted item'ın varlığına bak
+                    logger.info("    ⚠️ No state_before, assuming selection based on quoted item")
+                    return True
+
+            logger.info("    ✓ Quoted items condition passed")
+            return True
+
+        # 3. Visibility keywords
+        visibility_keywords = ["visible", "appears", "shown", "displayed", "open", "opened", "panel"]
+        if any(kw in condition for kw in visibility_keywords):
+            target_tokens = self._extract_visibility_targets_simple(condition)
+
+            if not target_tokens:
+                logger.debug("    → No target tokens extracted from condition")
+                return False
+
+            found_count = sum(
+                1 for token in target_tokens
+                if any(token in name for name in visible_names)
+            )
+
+            coverage = found_count / len(target_tokens) if target_tokens else 0
+            logger.info("    → Visibility: %d/%d tokens found (%.1f%%)", 
+                        found_count, len(target_tokens), coverage * 100)
+
+            if coverage >= 0.5:
+                logger.info("    ✓ Visibility condition passed")
+                return True
+            else:
+                logger.info("    ✗ Visibility condition failed")
+                return False
+
+        # 4. Fallback to fuzzy match
+        return self._fuzzy_match_condition(condition, visible_names)
+
+
+    def _extract_visibility_targets_simple(self, condition: str) -> Set[str]:
+        """Extract target tokens from visibility condition - SIMPLE VERSION"""
+
+        # Remove visibility verbs and common words
+        clean = re.sub(
+        r'\b(is|are|be|being|appears?|shown|displayed|visible|open|opened|shows|the|a|an|with|and)\b',
+        '',
+            condition,
+            flags=re.IGNORECASE
+        )
+
+        # Extract words 3+ chars
+        tokens = set(re.findall(r'\b\w{3,}\b', clean.lower()))
+
+        # Remove generic terms
+        stopwords = {"that", "this", "from", "have", "will", "should", "must", "entity", "item"}
+
+        result = tokens - stopwords
+
+        logger.debug("    → Extracted visibility tokens: %s", result)
+        return result
+
+    def _fuzzy_match_condition(self, condition: str, visible_names: List[str]) -> bool:
+        """Fuzzy match for condition"""
+        tokens = set(re.findall(r'\b\w{3,}\b', condition.lower()))
+        stopwords = {"is", "are", "the", "and", "or", "with", "that", "this"}
+        tokens = tokens - stopwords
+
+        if not tokens:
+            logger.debug("    → No tokens for fuzzy match")
+            return False
+
+        found = sum(
+            1 for token in tokens
+            if any(token in name for name in visible_names)
+        )
+
+        coverage = found / len(tokens) if tokens else 0
+        logger.debug("    → Fuzzy match: %d/%d tokens (%.1f%%)", found, len(tokens), coverage * 100)
+
+        return coverage >= 0.4  # Daha esnek eşik
+
 
     # ========================================================================
     # UTILITIES
@@ -1955,13 +2312,12 @@ class LLMBackend:
             "ack_status": entry.ack.get("status"),
             "timestamp": entry.timestamp,
         }
-        
+
         if entry.ack.get("status") != "ok":
             summary["ack_error"] = entry.ack.get("message", "")
-        
+
         if entry.state_after is not None:
             summary["result_element_count"] = len(entry.state_after.get("elements", []))
-        
         return summary
 
     def _prune_state_blobs(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -1977,22 +2333,21 @@ class LLMBackend:
                 pruned[key] = value
         return pruned
 
+    # ============================================================================
+    # EXPORTS
+    # ============================================================================
 
-# ============================================================================
-# EXPORTS
-# ============================================================================
-
-__all__ = [
-    "LLMBackend",
-    "StepDefinition",
-    "ScenarioResult",
-    "ScenarioStepOutcome",
-    "RunResult",
-    "ActionExecutionLog",
-    "BackendError",
-    "PlanParseError",
-    "SUTCommunicationError",
-    "LLMCommunicationError",
-    "AGEN_TEST_PLAN_SCHEMA",
-    "PRODUCTION_SYSTEM_PROMPT",
-]
+    __all__ = [
+        "LLMBackend",
+        "StepDefinition",
+        "ScenarioResult",
+        "ScenarioStepOutcome",
+        "RunResult",
+        "ActionExecutionLog",
+        "BackendError",
+        "PlanParseError",
+        "SUTCommunicationError",
+        "LLMCommunicationError",
+        "AGEN_TEST_PLAN_SCHEMA",
+        "SYSTEM_PROMPT",
+    ]
