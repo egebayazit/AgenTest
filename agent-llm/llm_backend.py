@@ -13,7 +13,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Set
 from difflib import SequenceMatcher
-
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -22,14 +21,20 @@ logger = logging.getLogger(__name__)
 # PROMPT 
 # ============================================================================
 
-
 SYSTEM_PROMPT = """
 system:
   role: AgenTest
   description: Expert Windows UI automation action planner
   output: VALID JSON ONLY (no markdown, no extra text)
 
-mission: Convert manual test steps into precise executable UI action plans.
+mission: Convert ONE manual test step into ONE precise executable UI action.
+
+CRITICAL_RULES[5]:
+  1, ONE_STEP_ONE_ACTION: Each test step = EXACTLY 1 primary action (click/type)
+  2, NO_WAIT_SPAM: Use wait ONLY if test step explicitly mentions "wait for..."
+  3, NO_RANDOM_CLICKS: If element not found, return steps:[] with clear reasoning
+  4, NO_RETRY_LOGIC: You attempt once, backend handles retries
+  5, TRUST_COORDINATES: Given coordinates are ALWAYS accurate, never modify
 
 json_format{key,type,desc}:
   action_id,string,Unique step ID
@@ -48,21 +53,17 @@ element{field,desc}:
 
 data_quality_order[3]: coordinates,name,ocr_ods
 
-supported_actions[8]:
+supported_actions[6]:
   click(type,button,click_count,modifiers,target_point)
   type(text,delay_ms,enter)
   key_combo(combo_keys)
-  wait(ms)                  # only_if_ui_response_needed
+  wait(ms)
   drag(from,to,button,hold_ms)
-  scroll(delta,horizontal,at)  # only_if_step_mentions_scroll_or_target_offscreen
-  move(point,settle_ms)
-  key_state(type,key)       # key_down / key_up
-
-scroll_constraints:
-  require_test_step_or_offscreen: true
+  scroll(delta,horizontal,at)
 
 wait_constraints:
-  require_ui_state_change_or_response: true
+  require_explicit_mention_in_test_step: true
+  no_automatic_waits: true
 
 matching_priority[5]:
   1,spatial_analysis
@@ -129,7 +130,7 @@ notes[7]:
 example_not_found_json:
   action_id: step_x
   coords_space: physical
-  steps[]
+  steps: []
   reasoning: "Target element not found"
 
 reminder:
@@ -152,7 +153,7 @@ AGEN_TEST_PLAN_SCHEMA: Dict[str, Any] = {
         "reasoning": {"type": "string", "maxLength": 800},
         "steps": {
             "type": "array",
-            "maxItems": 24,
+            "maxItems": 3,  # ✅ HARD LIMIT: Max 3 steps   #todo: check limits
             "items": {
                 "type": "object",
                 "additionalProperties": False,
@@ -253,21 +254,6 @@ AGEN_TEST_PLAN_SCHEMA: Dict[str, Any] = {
                             },
                         },
                         "required": ["type", "delta"],
-                    },
-                    {  # MOVE
-                        "properties": {
-                            "type": {"const": "move"},
-                            "point": {
-                                "type": "object",
-                                "required": ["x", "y"],
-                                "properties": {
-                                    "x": {"type": "number"},
-                                    "y": {"type": "number"},
-                                },
-                            },
-                            "settle_ms": {"type": "integer", "minimum": 0},
-                        },
-                        "required": ["type", "point"],
                     },
                 ],
             },
@@ -399,30 +385,30 @@ class LLMBackend:
         state_url_ods: str,
         action_url: str,
         llm_provider: str,
-        llm_model: str ,
+        llm_model: str,
         llm_base_url: str = "http://localhost:11434",
         llm_api_key: Optional[str] = None,
         *,
         system_prompt: str = SYSTEM_PROMPT,
-        max_attempts: int = 2,
+        max_attempts: int = 2, 
         post_action_delay: float = 0.5,
         sut_timeout: float = 50.0,
-        llm_timeout: float = 150.0,
-        max_tokens: int = 600,
-        max_plan_steps: int = 24,
+        llm_timeout: float = 800.0,
+        max_tokens: int = 384,  # 600 → 384 
+        max_plan_steps: int = 10,  # 24 → 10 (spam action önleme için)
         schema_retry_limit: int = 1,
         http_referrer: str = "https://agentest.local/backend",
         client_title: str = "AgenTest LLM Backend",
         omit_large_blobs: bool = True,
         enforce_json_response: bool = True,
-        ) -> None:
+    ) -> None:
 
         # Validation
         if not llm_model:
             raise ValueError("llm_model is required")
         
-        if llm_provider not in ("ollama", "openrouter"):
-            raise ValueError("llm_provider must be 'ollama' or 'openrouter'")
+        if llm_provider not in ("ollama", "openrouter", "lmstudio"):
+            raise ValueError("llm_provider must be 'ollama', 'lmstudio'or 'oropenrouter'")
         
         if llm_provider == "openrouter" and not llm_api_key:
             raise ValueError("llm_api_key required for OpenRouter")
@@ -435,7 +421,7 @@ class LLMBackend:
         # Store config
         self.state_url_windriver = state_url_windriver
         self.state_url_ods = state_url_ods
-        self.max_attempts = 2
+        self.max_attempts = max_attempts
         
         # LLM config
         self.llm_provider = llm_provider
@@ -459,7 +445,7 @@ class LLMBackend:
         self.omit_large_blobs = omit_large_blobs
                 
         self._last_element_count = 0
-        self._previous_state_hash: Optional[str] = None  # For UI change detection
+        self._previous_state_hash: Optional[str] = None
 
     @classmethod
     def from_env(cls, **overrides: Any) -> "LLMBackend":
@@ -482,7 +468,6 @@ class LLMBackend:
             return bool(value)
 
         params = {
-            # State endpoints
             "state_url_windriver": overrides.pop(
                 "state_url_windriver", 
                 env("SUT_STATE_URL_WINDRIVER", "http://127.0.0.1:18800/state/for-llm")
@@ -491,14 +476,10 @@ class LLMBackend:
                 "state_url_ods", 
                 env("SUT_STATE_URL_ODS", "http://127.0.0.1:18800/state/from-ods")
             ),
-            
-            # Action endpoint
             "action_url": overrides.pop(
                 "action_url", 
                 env("SUT_ACTION_URL", "http://192.168.137.249:18080/action")
             ),
-            
-            # LLM config
             "llm_provider": overrides.pop(
                 "llm_provider",
                 env("LLM_PROVIDER", "ollama")
@@ -515,8 +496,6 @@ class LLMBackend:
                 "llm_api_key",
                 env("LLM_API_KEY") or env("OPENROUTER_API_KEY", None)
             ),
-            
-            # Other config
             "enforce_json_response": _env_bool("ENFORCE_JSON_RESPONSE"),
         }
         
@@ -524,16 +503,15 @@ class LLMBackend:
         return cls(**params)
 
     # ========================================================================
-    # SPATIAL ANALYSIS IMPLEMENTATION
+    # SPATIAL ANALYSIS
     # ========================================================================
-
+    
     def _generate_spatial_hints(
         self, 
         test_step: str, 
         state: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Generate spatial relationship hints"""
-        # 1. DETECT SPATIAL RELATIONSHIP TYPE
         detected_direction = None
         reference_label = None
         
@@ -554,11 +532,9 @@ class LLMBackend:
             logger.debug("  → No spatial relationship detected in test_step")
             return None
         
-        # 2. FIND REFERENCE ELEMENT
         elements = state.get("elements", [])
         ref_elem = None
         
-        # Try exact match first (case-insensitive)
         for elem in elements:
             name = elem.get("name", "").strip()
             if name.lower() == reference_label.lower():
@@ -566,7 +542,6 @@ class LLMBackend:
                 logger.debug("  → Exact match: '%s'", name)
                 break
         
-        # Try partial match if exact not found
         if not ref_elem:
             for elem in elements:
                 name = elem.get("name", "").strip()
@@ -575,7 +550,6 @@ class LLMBackend:
                     logger.debug("  → Partial match: '%s'", name)
                     break
         
-        # Try fuzzy match if still not found (70% similarity threshold)
         if not ref_elem:
             best_match = None
             best_ratio = 0.0
@@ -604,7 +578,6 @@ class LLMBackend:
         
         logger.debug("  → Found reference '%s' at (%d, %d)", reference_label, ref_x, ref_y)
         
-        # 3. SEARCH BASED ON DIRECTION
         nearby_elements = self._search_by_direction(
             elements=elements,
             direction=detected_direction,
@@ -617,7 +590,6 @@ class LLMBackend:
             logger.debug("  → No elements found %s of '%s'", detected_direction, reference_label)
             return None
         
-        # 4. SORT BY DISTANCE
         nearby_elements.sort(key=lambda e: e["distance"])
         
         logger.debug(
@@ -627,7 +599,6 @@ class LLMBackend:
             reference_label
         )
         
-        # 5. BUILD RESULT
         hint_text = (
             f"Found '{reference_label}' at ({ref_x}, {ref_y}). "
             f"{len(nearby_elements)} elements detected {detected_direction}. "
@@ -643,7 +614,7 @@ class LLMBackend:
             "reference_label": reference_label,
             "reference_location": {"x": ref_x, "y": ref_y},
             "spatial_direction": detected_direction,
-            "nearby_candidates": nearby_elements[:10],
+            "nearby_candidates": nearby_elements[:3],  # 10 → 3 (context küçültme)
             "hint": hint_text
         }
 
@@ -668,7 +639,6 @@ class LLMBackend:
             dx = ex - ref_x
             dy = ey - ref_y
             
-            # Apply direction-specific filters
             if direction == "right":
                 if 0 < dx < 200 and abs(dy) < 40:
                     nearby.append({
@@ -868,7 +838,16 @@ class LLMBackend:
             steps = plan.get("steps", [])
             reasoning = plan.get("reasoning", "")
 
-            # ENHANCED LOGGING
+            # STEP COUNT VALIDATION
+            if len(steps) > self.max_plan_steps:
+                logger.error("❌ LLM generated %d steps (max: %d) - REJECTING PLAN", 
+                           len(steps), self.max_plan_steps)
+                plan["steps"] = []
+                plan["reasoning"] = f"Backend rejected plan: {len(steps)} steps exceeds limit of {self.max_plan_steps}"
+                plan["_backend_steps_substituted"] = True
+                steps = []
+                reasoning = plan["reasoning"]
+
             logger.info("=" * 80)
             logger.info("📋 TEST STEP: %s", test_step)
             logger.info("🎯 EXPECTED: %s", expected_result[:100])
@@ -901,9 +880,8 @@ class LLMBackend:
                 logger.warning("  ⚠️  NO ACTIONS (empty steps)")
                 logger.warning("  💭 Reason: %s", reasoning)
                 
-                # Empty steps handling
                 if attempt < self.max_attempts:
-                    logger.info("  → Retrying with ODS enhanced detection...")
+                    logger.info("  → Retrying with ODS detection...")
                     continue
                 else:
                     failure_message = f"Element not found after {self.max_attempts} attempts. LLM reasoning: {reasoning}"
@@ -920,7 +898,6 @@ class LLMBackend:
             
             logger.info("=" * 80)
             
-            # State before action
             state_before = state
 
             ack = await self._send_action(plan)
@@ -950,7 +927,6 @@ class LLMBackend:
             final_state = await self._fetch_state_safe(state, attempt_number=attempt)
             log_entry.state_after = final_state
             
-            # ✅ UI change detection
             ui_changed, change_magnitude = self._detect_ui_change(state_before, final_state)
             
             logger.info("🔍 VALIDATING EXPECTED RESULT...")
@@ -1011,7 +987,7 @@ class LLMBackend:
                         reason=f"Expected result not achieved after {attempt} attempts (WinDriver + ODS)",
                     )
                 
-                logger.info("  → Retrying with ODS enhanced detection...")
+                logger.info("  → Retrying with ODS detection...")
 
         logger.warning("✗ Failed: Exhausted %d attempts", self.max_attempts)
         return RunResult(
@@ -1098,7 +1074,6 @@ class LLMBackend:
         """Compute hash of UI state for change detection"""
         elements = state.get("elements", [])
         
-        # Hash based on element names and positions
         state_signature = []
         for elem in elements:
             name = elem.get("name") or elem.get("name_ods") or elem.get("name_ocr") or ""
@@ -1121,7 +1096,6 @@ class LLMBackend:
         if hash_before == hash_after:
             return False, 0.0
         
-        # Calculate change magnitude
         elems_before = len(state_before.get("elements", []))
         elems_after = len(state_after.get("elements", []))
         
@@ -1159,9 +1133,10 @@ class LLMBackend:
             attempt_number=attempt_number,
         )
 
-        # OLLAMA vs OPENROUTER routing
         if self.llm_provider == "ollama":
             return await self._request_plan_ollama(messages, temperature)
+        elif self.llm_provider == "lmstudio":
+            return await self._request_plan_lmstudio(messages, temperature)
         else:
             return await self._request_plan_openrouter(messages, temperature)
 
@@ -1176,7 +1151,7 @@ class LLMBackend:
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "format": AGEN_TEST_PLAN_SCHEMA,
+            "format": AGEN_TEST_PLAN_SCHEMA, 
             "options": {
                 "temperature": temperature,
                 "num_predict": self.max_tokens,
@@ -1219,6 +1194,81 @@ class LLMBackend:
         if not content:
             raise PlanParseError("Ollama returned empty content")
         
+        plan = self._parse_plan(content)
+        return plan
+    
+    async def _request_plan_lmstudio(
+        self,
+        messages: List[Dict[str, Any]],
+        temperature: float,
+) ->     Dict[str, Any]:
+        """Request plan from LM Studio (OpenAI-compatible API)"""
+
+        # LM Studio uses OpenAI-compatible /v1/chat/completions endpoint
+        url = f"{self.llm_base_url}/chat/completions"
+
+        headers = {
+            "Content-Type": "application/json",
+        }
+
+        # Add API key if provided (LM Studio doesn't require it by default)
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        body = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": self.max_tokens,
+            "stream": False,
+        }
+
+        #  Add JSON schema if enforce_json_response is enabled
+        if self.enforce_json_response:
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "AgenTestPlan",
+                    "schema": AGEN_TEST_PLAN_SCHEMA,
+                },
+            }
+
+        logger.error("🚀 SENDING TO LM STUDIO:")
+        logger.error("URL: %s", url)
+        logger.error("Model: %s", self.model)
+        logger.error("=" * 80)
+
+        try:
+            async with httpx.AsyncClient(timeout=self.llm_timeout) as client:
+                response = await client.post(url, headers=headers, json=body)
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            message = f"LM Studio request failed: {exc}"
+            logger.error(message)
+            raise LLMCommunicationError(message) from exc
+
+        try:
+            data = response.json()
+        except json.JSONDecodeError as exc:
+            message = "LM Studio returned invalid JSON"
+            logger.error(message)
+            raise LLMCommunicationError(message) from exc
+
+        # Extract content from OpenAI-compatible response
+        try:
+            content = data["choices"][0]["message"]["content"].strip()
+        except (KeyError, IndexError, AttributeError) as exc:
+            message = f"Unexpected LM Studio response format: {data}"
+            logger.error(message)
+            raise LLMCommunicationError(message) from exc
+
+        logger.error("🔍 RAW LLM RESPONSE (LM Studio):")
+        logger.error(content)
+        logger.error("=" * 80)
+
+        if not content:
+            raise PlanParseError("LM Studio returned empty content")
+
         plan = self._parse_plan(content)
         return plan
 
@@ -1320,15 +1370,16 @@ class LLMBackend:
             },
             "stop": ["</JSON_ONLY>", "<|end|>", "assistant:", "commentary to=assistant"],
         }
-        
+
         if enforce_json and self.enforce_json_response:
             body["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "AgenTestPlan", 
-                    "schema": AGEN_TEST_PLAN_SCHEMA  # ← DIREKT GLOBAL
-            },
-        }
+                    "name": "AgenTestPlan",
+                    "schema": AGEN_TEST_PLAN_SCHEMA,
+                },
+            }
+
         return body
 
     def _extract_llm_content_openrouter(self, data: Dict[str, Any]) -> str:
@@ -1409,12 +1460,16 @@ class LLMBackend:
                        spatial_hints["spatial_direction"], 
                        spatial_hints["reference_label"])
         
+        # FIX: Recent actions'ı daha da kısalt
         if recent_actions:
-            # Ollama için recent_actions'ı kısalt
             if self.llm_provider == "ollama":
-                payload["recent_actions"] = recent_actions[-1:]
+                last = recent_actions[-1]
+                payload["recent_actions"] = [{
+                    "action_id": last.get("action_id"),
+                    "steps_count": last.get("steps_count"),
+                }]
             else:
-                payload["recent_actions"] = recent_actions[-3:] 
+                payload["recent_actions"] = recent_actions[-2:]  #LM Studio için -2 olbilir?
 
         if schema_hint:
             payload["backend_guidance"] = schema_hint
@@ -1491,12 +1546,10 @@ class LLMBackend:
                 note = f"Backend recovered steps from {steps_source}."
                 plan["reasoning"] = f"{reasoning} | {note}" if reasoning else note
 
+        # Step count artık run_step() içinde kontrol ediliyor
+        # truncate yerine flag set ediyoruz
         if self.max_plan_steps and len(steps) > self.max_plan_steps:
-            logger.warning("LLM plan has %d steps; truncating to %d", len(steps), self.max_plan_steps)
-            plan["steps"] = steps[:self.max_plan_steps]
-            reasoning = plan.get("reasoning")
-            note = f"Truncated to first {self.max_plan_steps} steps by backend."
-            plan["reasoning"] = f"{reasoning} | {note}" if reasoning else note
+            logger.warning("LLM plan has %d steps; will be rejected in run_step", len(steps))
 
         if "action_id" not in plan or not plan["action_id"]:
             plan["action_id"] = f"step_{int(time.time() * 1000)}"
@@ -1715,12 +1768,6 @@ class LLMBackend:
                         return f"step[{idx}] SCROLL.at must have numeric x,y"
                     if not in_bounds(at["x"], at["y"]):
                         return f"step[{idx}] SCROLL.at outside screen {sw}x{sh}"
-            elif t == "move":
-                pt = step.get("point") or {}
-                if any(not isinstance(pt.get(k), (int, float)) for k in ("x", "y")):
-                    return f"step[{idx}] MOVE.point must have numeric x,y"
-                if not in_bounds(pt["x"], pt["y"]):
-                    return f"step[{idx}] MOVE.point outside screen {sw}x{sh}"
             elif t in ("type", "key_combo", "wait"):
                 pass
             else:
@@ -1736,8 +1783,8 @@ class LLMBackend:
         state: Dict[str, Any], 
         expected_result: str,
         plan_executed: Dict[str, Any],
-        state_before: Optional[Dict[str, Any]] = None
-) ->     bool:
+        state_before: Optional[Dict[str, Any]] = None,
+    ) -> bool:
         """Enhanced validation: Check BOTH text match AND action completion"""
 
         if not expected_result:
@@ -1745,12 +1792,10 @@ class LLMBackend:
 
         steps_executed = plan_executed.get("steps", [])
 
-        # Empty steps = NO ACTION = FAIL
         if not steps_executed:
             logger.warning("❌ No actions executed, cannot validate expected result")
             return False
 
-        #  Check if meaningful action was taken
         meaningful_action_types = {"click", "type", "key_combo", "drag"}
         has_meaningful_action = any(
             step.get("type") in meaningful_action_types 
@@ -1767,7 +1812,6 @@ class LLMBackend:
         if not elems:
             return False
 
-        # Collect all name sources
         visible_names = []
         for e in elems:
             for key in ["name", "name_ods", "name_ocr"]:
@@ -1775,9 +1819,6 @@ class LLMBackend:
                 if name:
                     visible_names.append(name.lower())
 
-        # ========================================================================
-        # AND LOGIC
-        # ========================================================================
         if " and " in text:
             conditions = text.split(" and ")
             logger.debug("  → Expected has multiple conditions: %d", len(conditions))
@@ -1787,7 +1828,6 @@ class LLMBackend:
                 condition = condition.strip()
                 logger.debug("    Condition %d: %s", i, condition[:50])
 
-                # Check each condition separately
                 condition_met = self._check_single_condition(
                     condition, 
                     visible_names, 
@@ -1821,7 +1861,6 @@ class LLMBackend:
                 logger.info("❌ Expected closing not achieved: targets still present in UI")
                 return False
 
-        # Check for visibility expectations
         visibility_keywords = ["visible", "appears", "shown", "displayed", "open", "opened", "shows"]
         expects_visibility = any(kw in text for kw in visibility_keywords)
 
@@ -1834,10 +1873,8 @@ class LLMBackend:
                 logger.info("❌ Expected visibility not achieved: targets not found in UI")
                 return False
 
-        # Quoted items check
         quoted_pattern = r'["\']([^"\']+)["\']'
         quoted_items = re.findall(quoted_pattern, expected_result)
-
 
         if quoted_items:
             all_found = all(
@@ -1900,7 +1937,6 @@ class LLMBackend:
         if not expected_tokens:
             return any(word in name for word in text.split() if len(word) > 3 for name in visible_names)
 
-        # Exact match
         overlap = expected_tokens & visible_tokens
         coverage = len(overlap) / len(expected_tokens) if expected_tokens else 0
 
@@ -1912,7 +1948,6 @@ class LLMBackend:
             logger.info("✓ Expected HOLDS: %.1f%% keyword match", coverage * 100)
             return True
 
-        # Fuzzy token match
         def fuzzy_token_match(expected_tokens: Set[str], visible_tokens: Set[str], threshold: float = 0.80) -> Tuple[bool, float]:
             if not expected_tokens:
                 return False, 0.0
@@ -1937,17 +1972,14 @@ class LLMBackend:
             logger.info("✓ Expected HOLDS: %.1f%% fuzzy keyword match", fuzzy_coverage * 100)
             return True
         
-        # Smart fuzzy match with stricter threshold
         def smart_fuzzy_match(
             expected_text: str,
             visible_items: List[str],
             require_action_context: bool = False
         ) -> Tuple[bool, float, str]:
-            #  Extract action verbs
             action_verbs = ["selected", "clicked", "opened", "closed", "changed", "entered", "shows"]
             has_action_verb = any(verb in expected_text.lower() for verb in action_verbs)
             
-            #  Stricter threshold if action mentioned
             threshold = 0.85 if (has_action_verb or require_action_context) else 0.75
             
             if has_action_verb:
@@ -1956,7 +1988,6 @@ class LLMBackend:
             best_match = 0.0
             best_item = ""
             
-            # Extract expected entities
             expected_entities = self._extract_key_entities(expected_text)
             
             clean_expected = re.sub(r'\b(it is|that|the|observed|shown|displayed)\b', '', expected_text)
@@ -1965,7 +1996,6 @@ class LLMBackend:
             for item in visible_items:
                 item_lower = item.lower()
                 
-                # Check entity coverage
                 entities_found = sum(
                     1 for entity in expected_entities 
                     if entity.lower() in item_lower
@@ -1973,10 +2003,8 @@ class LLMBackend:
                 
                 entity_coverage = entities_found / len(expected_entities) if expected_entities else 0
                 
-                # Text similarity
                 text_ratio = SequenceMatcher(None, clean_expected.lower(), item_lower).ratio()
                 
-                # Combined score: text similarity + entity coverage
                 combined_score = (text_ratio * 0.6) + (entity_coverage * 0.4)
                 
                 if combined_score > best_match:
@@ -1992,7 +2020,6 @@ class LLMBackend:
             logger.info("✓ Expected HOLDS: Fuzzy match '%.30s...' (%.1f%%)", matched_item, fuzzy_score * 100)
             return True
         
-        # Button state change detection
         if "running" in text or "started" in text or "active" in text:
             has_stop = any("stop scenario" in name or "pause scenario" in name for name in visible_names)
             has_run = any("run scenario" in name for name in visible_names)
@@ -2007,24 +2034,19 @@ class LLMBackend:
         return False
     
     # ========================================================================
-    # HELPER FUNCTIONS FOR EXPECTED RESULT VALIDATION
+    # HELPER FUNCTIONS
     # ========================================================================
 
     def _extract_closing_targets(self, expected_text: str) -> Set[str]:
         """Extract what elements should close/disappear"""
-        # "Dialog closes" → ["dialog"]
         closing_keywords = ["closes", "closed", "disappears", "disappeared", "hidden", "gone"]
 
-        # Find text before closing keyword
         for keyword in closing_keywords:
             if keyword in expected_text.lower():
-                # Get text before the keyword
                 parts = expected_text.lower().split(keyword)
                 if parts:
                     target_text = parts[0].strip()
-                    # Extract meaningful words
                     tokens = set(re.findall(r'\b\w{3,}\b', target_text))
-                    # Remove common words
                     stopwords = {"the", "is", "are", "was", "and", "or", "will", "should", "must"}
                     return tokens - stopwords
 
@@ -2035,43 +2057,42 @@ class LLMBackend:
         target_tokens: Set[str], 
         visible_names: List[str]
     ) -> bool:
-        """Verify that target tokens are NOT present in visible UI (i.e., they closed)"""
+        """Verify that target tokens are NOT present in visible UI"""
 
         if not target_tokens:
-            # If no specific target mentioned, assume success (general closing)
             return True
 
-        # Check how many targets are still found
         found_count = 0
 
         for token in target_tokens:
-            # Check if token appears in ANY visible element
             token_found = any(token in visible_name for visible_name in visible_names)
 
             if token_found:
                 found_count += 1
                 logger.debug("    → '%s' still present in UI", token)
 
-        # Target should be ABSENT (not found)
         presence_ratio = found_count / len(target_tokens)
 
         logger.debug("  → Closing check: %d/%d targets still present (%.1f%%)", 
                     found_count, len(target_tokens), presence_ratio * 100)
 
-        # Consider closed if less than 30% of target keywords still present
         return presence_ratio < 0.30
 
     def _extract_visibility_targets(self, expected_text: str) -> Set[str]:
         """Extract what elements should be visible from expected result"""
+
+        # FIX 1: Önce quoted items kontrol et
         quoted_items = re.findall(r'["\']([^"\']+)["\']', expected_text)
         if quoted_items:
-            # Quoted item varsa 
             tokens = set()
             for item in quoted_items:
                 tokens.update(re.findall(r'\b\w{3,}\b', item.lower()))
             return tokens
 
-        # Remove visibility verbs
+        # FIX 2: Multi-word phrases'i koru!
+        # "Scenario Management dialog" → ["scenario management", "dialog"]
+
+        # Remove common visibility keywords
         clean = re.sub(
             r'\b(is|are|be|being|appears?|shown|displayed|visible|open|opened|shows)\b',
             '',
@@ -2079,6 +2100,7 @@ class LLMBackend:
             flags=re.IGNORECASE
         )
 
+        # Remove selection keywords
         clean = re.sub(
             r'\b(selected|highlighted|active|checked|and)\b',
             '',
@@ -2086,54 +2108,126 @@ class LLMBackend:
             flags=re.IGNORECASE
         )
 
-        # Remove connectors
+        # Remove articles
         clean = re.sub(r'\b(with|the|a|an)\b', '', clean, flags=re.IGNORECASE)
 
-        # Extract meaningful words (3+ chars)
-        tokens = set(re.findall(r'\b\w{3,}\b', clean.lower()))
+        clean = clean.strip()
 
-        # Remove common stopwords
-        stopwords = {"that", "this", "from", "have", "will", "should", "must", "entity", "item", "row"}
+        # FIX 3: "dialog", "window", "panel" gibi UI type keywords'ü ayır
+        ui_type_keywords = ["dialog", "window", "panel", "form", "popup", "modal"]
 
-        return tokens - stopwords
+        # Extract UI type if present
+        ui_type = None
+        for keyword in ui_type_keywords:
+            if keyword in clean.lower():
+                ui_type = keyword
+                # Remove UI type from clean text
+                clean = re.sub(rf'\b{keyword}\b', '', clean, flags=re.IGNORECASE)
+                break
+            
+        clean = re.sub(r'\s+', ' ', clean).strip()
+
+        # FIX 4: Multi-word entity olarak döndür
+        # "scenario management" → tek token olarak tut
+        tokens = set()
+
+        if clean:
+            # Tüm phrase'i tek token olarak ekle
+            tokens.add(clean.lower())
+
+            # Ayrıca individual words'leri de ekle (fallback için)
+            individual = re.findall(r'\b\w{3,}\b', clean.lower())
+            tokens.update(individual)
+
+        # UI type'ı da ekle (opsiyonel)
+        if ui_type:
+            tokens.add(ui_type)
+
+        stopwords = {"that", "this", "from", "have", "will", "should", "must"}
+        result = tokens - stopwords
+
+        logger.debug("  → Extracted visibility tokens: %s", result)
+        return result
 
     def _verify_targets_visible(
         self, 
         target_tokens: Set[str], 
         visible_names: List[str]
-    ) -> bool:
+) ->     bool:
         """Verify that target tokens are actually present in visible UI"""
 
         if not target_tokens:
             return False
 
-        # Check how many targets are found
         found_count = 0
+        phrase_found = False
 
-        for token in target_tokens:
-            # Check if token appears in ANY visible element
-            token_found = any(token in visible_name for visible_name in visible_names)
+        # Önce en uzun phrase'leri kontrol et (multi-word matches)
+        sorted_tokens = sorted(target_tokens, key=lambda x: -len(x))
+
+        for token in sorted_tokens:
+            token_found = False
+
+            #  Exact substring match (case-insensitive)
+            for visible_name in visible_names:
+                if token in visible_name.lower():
+                    token_found = True
+
+                    # Multi-word match
+                    if ' ' in token:  
+                        phrase_found = True
+                        logger.debug("    ✓ EXACT PHRASE MATCH: '%s' in '%s'", token, visible_name)
+
+                    break
+                
+            # FUZZY match for multi-word phrases (if exact failed)
+            if not token_found and ' ' in token:
+                # "scenario management dialog" → check if words appear close together
+                token_words = token.split()
+
+                for visible_name in visible_names:
+                    visible_lower = visible_name.lower()
+
+                    # Check if all words present
+                    all_words_present = all(word in visible_lower for word in token_words)
+
+                    if all_words_present:
+                        # Check word proximity (optional)
+                        token_found = True
+                        phrase_found = True
+                        logger.debug("    ✓ FUZZY PHRASE: all words of '%s' in '%s'", 
+                                   token, visible_name)
+                        break            
 
             if token_found:
                 found_count += 1
 
-        # Require at least 70% of targets to be visible
-        coverage = found_count / len(target_tokens)
+        coverage = found_count / len(target_tokens) if target_tokens else 0
 
-        logger.debug("  → Visibility check: %d/%d targets found (%.1f%%)", 
-                    found_count, len(target_tokens), coverage * 100)
+        logger.debug("  → Visibility: %d/%d found (%.1f%%), phrase_match=%s", 
+                found_count, len(target_tokens), coverage * 100, phrase_found)
 
-        return coverage >= 0.70
+        # Phrase match varsa threshold düşür
+        threshold = 0.50 if phrase_found else 0.70
+
+        success = coverage >= threshold
+
+        if success:
+            logger.info("✓ Visibility PASSED: %.1f%% >= %.0f%% (phrase=%s)", 
+                       coverage * 100, threshold * 100, phrase_found)
+        else:
+            logger.info("✗ Visibility FAILED: %.1f%% < %.0f%%", 
+                       coverage * 100, threshold * 100)
+
+        return success
 
     def _extract_key_entities(self, text: str) -> List[str]:
         """Extract key entities that should be present"""
-        # Look for quoted items first
         quoted = re.findall(r'["\']([^"\']+)["\']', text)
 
-        # Look for entity patterns
         entity_patterns = [
-            r'\b[A-Z][A-Za-z0-9_-]+\b',  # F-35_1, Controls
-            r'\b\w+\s+\w+\s+(?:panel|tab|dialog|window|button)\b',  # player info panel
+            r'\b[A-Z][A-Za-z0-9_-]+\b',
+            r'\b\w+\s+\w+\s+(?:panel|tab|dialog|window|button)\b',
         ]
 
         entities = quoted.copy()
@@ -2147,11 +2241,10 @@ class LLMBackend:
         condition: str,
         visible_names: List[str],
         state: Dict[str, Any],
-        state_before: Optional[Dict[str, Any]]
-) ->     bool:
+        state_before: Optional[Dict[str, Any]],
+    ) -> bool:  # FIX: Format düzelt
         """Check a single condition from expected result (for AND logic)"""
 
-        # 1. Closing check (önce)
         closing_keywords = ["closes", "closed", "disappears", "disappeared", "hidden", "gone"]
         if any(kw in condition for kw in closing_keywords):
             logger.debug("    → Condition expects closing/disappearing")
@@ -2171,35 +2264,28 @@ class LLMBackend:
                 logger.debug("    ✗ Closing condition failed (targets still present)")
                 return False
 
-        # 2. Quoted items + selection keywords
         quoted_pattern = r'["\']([^"\']+)["\']'
         quoted_items = re.findall(quoted_pattern, condition)
         quoted_items = [item.replace('\\', '').strip() for item in quoted_items]
 
-
-        # ✅ LOG BURAYA EKLE
         logger.info("    → Condition: '%s'", condition[:80])
         logger.info("    → Quoted items found: %s", quoted_items)
 
         if quoted_items:
-            # Check if quoted items present
             all_found = all(
                 any(quoted.lower() in name for name in visible_names)
                 for quoted in quoted_items
             )
 
-            # ✅ LOG BURAYA EKLE
             logger.info("    → All quoted items found in UI: %s", all_found)
 
             if not all_found:
                 logger.debug("    → Quoted items not found in condition")
                 return False
 
-            # Selection keyword + UI change check
             selection_keywords = ["selected", "highlighted", "active", "checked"]
             has_selection_keyword = any(kw in condition.lower() for kw in selection_keywords)
 
-            # ✅ LOG BURAYA EKLE
             logger.info("    → Has selection keyword: %s", has_selection_keyword)
 
             if has_selection_keyword:
@@ -2208,27 +2294,23 @@ class LLMBackend:
                 if state_before is not None:
                     ui_changed, change_mag = self._detect_ui_change(state_before, state)
 
-                    # ✅ LOG BURAYA EKLE
                     logger.info("    → UI change check: %s (%.1f%%)", 
                                "YES" if ui_changed else "NO", 
                                change_mag * 100)
 
-                    # UI değiştiyse VE quoted item varsa = SUCCESS
-                    if ui_changed and change_mag > 0.20:  # %20+ değişim yeterli
+                    if ui_changed and change_mag > 0.20:
                         logger.info("    ✓ Selection condition passed (UI changed + quoted found)")
                         return True
                     else:
                         logger.info("    ✗ Selection expected but insufficient UI change (%.1f%% < 20%%)", change_mag * 100)
                         return False
                 else:
-                    # state_before yoksa sadece quoted item'ın varlığına bak
-                    logger.info("    ⚠️ No state_before, assuming selection based on quoted item")
+                    logger.info("     No state_before, assuming selection based on quoted item")
                     return True
 
             logger.info("    ✓ Quoted items condition passed")
             return True
 
-        # 3. Visibility keywords
         visibility_keywords = ["visible", "appears", "shown", "displayed", "open", "opened", "panel"]
         if any(kw in condition for kw in visibility_keywords):
             target_tokens = self._extract_visibility_targets_simple(condition)
@@ -2253,25 +2335,20 @@ class LLMBackend:
                 logger.info("    ✗ Visibility condition failed")
                 return False
 
-        # 4. Fallback to fuzzy match
         return self._fuzzy_match_condition(condition, visible_names)
 
-
     def _extract_visibility_targets_simple(self, condition: str) -> Set[str]:
-        """Extract target tokens from visibility condition - SIMPLE VERSION"""
+        """Extract target tokens from visibility condition"""
 
-        # Remove visibility verbs and common words
         clean = re.sub(
-        r'\b(is|are|be|being|appears?|shown|displayed|visible|open|opened|shows|the|a|an|with|and)\b',
-        '',
+            r'\b(is|are|be|being|appears?|shown|displayed|visible|open|opened|shows|the|a|an|with|and)\b',
+            '',
             condition,
             flags=re.IGNORECASE
         )
 
-        # Extract words 3+ chars
         tokens = set(re.findall(r'\b\w{3,}\b', clean.lower()))
 
-        # Remove generic terms
         stopwords = {"that", "this", "from", "have", "will", "should", "must", "entity", "item"}
 
         result = tokens - stopwords
@@ -2297,8 +2374,7 @@ class LLMBackend:
         coverage = found / len(tokens) if tokens else 0
         logger.debug("    → Fuzzy match: %d/%d tokens (%.1f%%)", found, len(tokens), coverage * 100)
 
-        return coverage >= 0.4  # Daha esnek eşik
-
+        return coverage >= 0.4
 
     # ========================================================================
     # UTILITIES
@@ -2333,21 +2409,22 @@ class LLMBackend:
                 pruned[key] = value
         return pruned
 
-    # ============================================================================
-    # EXPORTS
-    # ============================================================================
 
-    __all__ = [
-        "LLMBackend",
-        "StepDefinition",
-        "ScenarioResult",
-        "ScenarioStepOutcome",
-        "RunResult",
-        "ActionExecutionLog",
-        "BackendError",
-        "PlanParseError",
-        "SUTCommunicationError",
-        "LLMCommunicationError",
-        "AGEN_TEST_PLAN_SCHEMA",
-        "SYSTEM_PROMPT",
-    ]
+# ============================================================================
+# EXPORTS
+# ============================================================================
+
+__all__ = [
+    "LLMBackend",
+    "StepDefinition",
+    "ScenarioResult",
+    "ScenarioStepOutcome",
+    "RunResult",
+    "ActionExecutionLog",
+    "BackendError",
+    "PlanParseError",
+    "SUTCommunicationError",
+    "LLMCommunicationError",
+    "AGEN_TEST_PLAN_SCHEMA",
+    "SYSTEM_PROMPT",
+]

@@ -11,7 +11,7 @@ from dataclasses import asdict
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 # .env (optional)
 try:
@@ -46,7 +46,7 @@ class StepIn(BaseModel):
     expected_result: str = Field(..., description="What should be true after the step", min_length=1)
     note_to_llm: Optional[str] = Field(None, description="Optional hint for planner")
 
-    @validator('test_step', 'expected_result')
+    @field_validator('test_step', 'expected_result')
     def must_not_be_empty(cls, v):
         if not v or not v.strip():
             raise ValueError('must not be empty')
@@ -65,11 +65,10 @@ class RunIn(BaseModel):
     """Input model for scenario run"""
     steps: List[StepIn] = Field(..., min_items=1, description="List of test steps to execute")
     temperature: float = Field(0.1, ge=0.0, le=1.0, description="LLM temperature (default: 0.1)")
-    
-    # Advanced configuration
+
     config: Optional[LLMConfigOverride] = Field(None, description="Optional backend config overrides")
 
-    @validator('steps')
+    @field_validator('steps')
     def validate_steps(cls, v):
         if not v:
             raise ValueError('steps must contain at least one item')
@@ -101,8 +100,7 @@ class HealthOut(BaseModel):
 
 app = FastAPI(
     title="AgenTest LLM Service",
-    version="3.0.0-ollama",
-    description="LLM-powered UI test automation service with Ollama support"
+    description="LLM-powered UI test automation service"
 )
 
 # CORS for Streamlit/local development
@@ -125,13 +123,11 @@ def _mk_backend(
     """
     Create LLM backend with optional configuration overrides.
     
-    Supports both Ollama (local) and OpenRouter (cloud).
-    
     Required environment variables:
-      - LLM_PROVIDER ("ollama" or "openrouter")
+      - LLM_PROVIDER ("ollama","lmstudio", or "openrouter")
       - LLM_MODEL (model name)
       - LLM_BASE_URL (for Ollama, default: http://localhost:11434)
-      - LLM_API_KEY (for OpenRouter only)
+      - LLM_API_KEY (for OpenRouter only, optional for LM Studio)
       - SUT_STATE_URL_WINDRIVER
       - SUT_STATE_URL_ODS
       - SUT_ACTION_URL
@@ -154,6 +150,11 @@ def _mk_backend(
         params["llm_api_key"] = None  # Ollama doesn't need API key
         logger.info("Using Ollama provider: %s @ %s", model, params["llm_base_url"])
     
+    elif provider == "lmstudio":
+        params["llm_base_url"] = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1")
+        params["llm_api_key"] = os.getenv("LLM_API_KEY")  # Optional for LM Studio
+        logger.info("Using LM Studio provider: %s @ %s", model, params["llm_base_url"])
+
     elif provider == "openrouter":
         api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENROUTER_API_KEY")
         if not api_key:
@@ -333,7 +334,6 @@ async def root() -> HealthOut:
     return HealthOut(
         status="ok",
         service="AgenTest LLM Service",
-        version="3.0.0-ollama",
         timestamp=time.time(),
     )
 
@@ -344,7 +344,6 @@ async def healthz() -> HealthOut:
     return HealthOut(
         status="ok",
         service="AgenTest LLM Service",
-        version="3.0.0-ollama",
         timestamp=time.time(),
     )
 
@@ -387,9 +386,7 @@ async def get_config() -> ConfigOut:
 async def run_scenario(body: RunIn) -> Dict[str, Any]:
     """
     Execute a test scenario with one or more steps.
-    
-    Uses Ollama (local) or OpenRouter (cloud) based on LLM_PROVIDER env var.
-    """
+        """
     # Provider check
     provider = os.getenv("LLM_PROVIDER", "ollama")
     
@@ -401,6 +398,11 @@ async def run_scenario(body: RunIn) -> Dict[str, Any]:
                 status_code=500,
                 detail="LLM_API_KEY missing in environment for OpenRouter provider."
             )
+    elif provider not in ("ollama", "lmstudio", "openrouter"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid LLM_PROVIDER: {provider}. Must be 'ollama', 'lmstudio', or 'openrouter'."
+        )
     
     # Create backend with config overrides
     try:
@@ -526,64 +528,6 @@ async def debug_expected_check(body: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-@app.get("/features")
-async def get_features() -> Dict[str, Any]:
-    """
-    Show available features and optimizations.
-    """
-    provider = os.getenv("LLM_PROVIDER", "ollama")
-    
-    return {
-        "status": "ok",
-        "version": "3.0.0-ollama",
-        "provider": provider,
-        "features": {
-            "ollama_support": {
-                "enabled": True,
-                "description": "Local LLM support via Ollama - no API key required",
-            },
-            "isolated_step_execution": {
-                "enabled": True,
-                "description": "Each step executed in isolation - LLM only sees CURRENT step, not future steps",
-            },
-            "two_attempt_strategy": {
-                "enabled": True,
-                "description": "Attempt 1: WinDriver (fast) → Attempt 2: ODS (accurate)",
-            },
-            "critical_dont_act_if_unsure": {
-                "enabled": True,
-                "description": "LLM returns empty steps if element not found with high confidence (prevents wrong actions)",
-            },
-            "smart_expected_check": {
-                "enabled": True,
-                "description": "Semantic keyword matching for expected results",
-            },
-            "enhanced_prompt": {
-                "enabled": True,
-                "description": "Production prompt with concrete examples and critical 'don't act if unsure' guidance",
-            },
-            "compact_history": {
-                "enabled": True,
-                "description": "Only last 3 actions in prompt (token savings)",
-            },
-        },
-        "defaults": {
-            "provider": provider,
-            "max_attempts": 2,
-            "schema_retry_limit": 1,
-            "max_tokens": 600,
-            "temperature": 0.1,
-            "detection_strategy": "WinDriver → ODS",
-        },
-        "improvements_vs_v2": {
-            "ollama_support": "Local LLM - no cloud API, no cost",
-            "isolated_steps": "Each step sees ONLY current context (prevents cross-step confusion)",
-            "faster_detection": "2 attempts instead of 4 (WinDriver fast, ODS accurate)",
-            "safer_execution": "No blind actions when element not found (empty steps → ODS retry)",
-        },
-    }
-
-
 # ============================================================================
 # MAIN
 # ============================================================================
@@ -604,6 +548,13 @@ if __name__ == "__main__":
     if provider == "ollama":
         base_url = os.getenv("LLM_BASE_URL", "http://localhost:11434")
         logger.info("  Ollama URL: %s", base_url)
+
+    elif provider == "lmstudio":
+        base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1")
+        logger.info("  LM Studio URL: %s", base_url)
+        api_key = os.getenv("LLM_API_KEY", "")
+        logger.info("  API Key: %s", "✓ SET" if api_key else "✗ NOT SET (optional)")
+
     elif provider == "openrouter":
         api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENROUTER_API_KEY", "")
         logger.info("  API Key: %s", "✓ SET" if api_key else "✗ NOT SET")
