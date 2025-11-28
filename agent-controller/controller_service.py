@@ -1,86 +1,78 @@
 from __future__ import annotations
 
-import os, re, io, base64, time, unicodedata, hashlib, html
-from typing import Any, Dict, List, Tuple, Optional
-import concurrent.futures as cf
+import os
+import re
+import io
+import base64
+import time
+import unicodedata
+import hashlib
+import html
 import multiprocessing
+import concurrent.futures as cf
+from typing import Any, Dict, List, Tuple, Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+import uvicorn
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-# --- optional: load .env ---
+# --- Optional Deps ---
 try:
     from dotenv import load_dotenv
     load_dotenv()
-except Exception:
+except ImportError:
     pass
 
-# --- OCR deps ---
 from PIL import Image, ImageOps, ImageFilter
 import pytesseract
 
-# --- YOLO (Ultralytics) ---
 _YOLO_AVAILABLE = False
 try:
     from ultralytics import YOLO
     _YOLO_AVAILABLE = True
-except Exception:
-    _YOLO_AVAILABLE = False
+except ImportError:
+    pass
 
-# -------------------- Config --------------------
+# ============================================================================
+# 1. CONFIGURATION & CONSTANTS
+# ============================================================================
+
+APP_NAME = "AgenTest Controller"
+APP_VER = "0.22.0-MASTER-FIXED"
+
+# Service URLs
 SUT_STATE_URL = os.getenv("SUT_STATE_URL", "")
-LLM_RUN_URL = os.getenv("LLM_RUN_URL")
-SUT_TIMEOUT_SEC = int(os.getenv("SUT_TIMEOUT_SEC", "45"))
-# --- ODS (OmniParser) ---
 ODS_URL = os.getenv("ODS_URL", "http://127.0.0.1:8000/parse").strip()
+SUT_TIMEOUT_SEC = int(os.getenv("SUT_TIMEOUT_SEC", "45"))
 ODS_TIMEOUT_SEC = int(os.getenv("ODS_TIMEOUT_SEC", "30"))
 
+# Deduplication Strategy
+# .env ayarlarını zorla okuması için string kontrolü yapıyoruz
+INCLUDE_DUPLICATES_FOR_LLM = os.getenv("INCLUDE_DUPLICATES_FOR_LLM", "0") in ("1", "true", "True")
 DEDUPE_KEY_MODE = os.getenv("DEDUPE_KEY_MODE", "name").lower()
-INCLUDE_DUPLICATES_FOR_LLM = os.getenv("INCLUDE_DUPLICATES_FOR_LLM", "1") in ("1","true","True")
 
-
-# OCR config
+# OCR Config
 TESSERACT_CMD = os.getenv("TESSERACT_CMD")
 if TESSERACT_CMD:
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+
 OCR_ENABLED = os.getenv("OCR_ENABLED", "1") not in ("0", "false", "False", "")
-TESSDATA_PREFIX = os.getenv("TESSDATA_PREFIX")
 TESSERACT_LANG = os.getenv("TESSERACT_LANG", "eng")
-
-OCR_FAST_MODE = os.getenv("OCR_FAST_MODE", "1") in ("1","true","True")
+OCR_FAST_MODE = os.getenv("OCR_FAST_MODE", "1") in ("1", "true", "True")
 OCR_SYNC_BUDGET = int(os.getenv("OCR_SYNC_BUDGET", "12"))
-
 OCR_MAX_AREA_FRAC = float(os.getenv("OCR_MAX_AREA_FRAC", "0.95"))
 OCR_MIN_CHAR = int(os.getenv("OCR_MIN_CHAR", "2"))
 OCR_MAX_CHAR = int(os.getenv("OCR_MAX_CHAR", "200"))
-
 OCR_MIN_CONF_EMPTY = int(os.getenv("OCR_MIN_CONF_EMPTY", "22"))
-OCR_MIN_CONF_DUP   = int(os.getenv("OCR_MIN_CONF_DUP", "28"))
-OCR_MIN_CONF_SHORT = int(os.getenv("OCR_MIN_CONF_SHORT", "40"))
 OCR_ACCEPT_LOWCONF_MIN = int(os.getenv("OCR_ACCEPT_LOWCONF_MIN", "12"))
 
-OCR_EARLY_STOP_DELTA = int(os.getenv("OCR_EARLY_STOP_DELTA", "12"))
-OCR_EARLY_STOP_ABS   = int(os.getenv("OCR_EARLY_STOP_ABS", "85"))
-
 RECT_PAD_PX = int(os.getenv("RECT_PAD_PX", "3"))
-
-OCR_USE_HARD_FILTERS = os.getenv("OCR_USE_HARD_FILTERS", "0") in ("1","true","True")
-THIN_LINE_HARD_PX = int(os.getenv("THIN_LINE_HARD_PX", "4"))
-THIN_LINE_SOFT_W  = int(os.getenv("THIN_LINE_SOFT_W", "600"))
-THIN_LINE_SOFT_H  = int(os.getenv("THIN_LINE_SOFT_H", "8"))
-
-TRY_INVERT = os.getenv("TRY_INVERT", "0") in ("1","true","True")
-FALLBACK_LANG = (os.getenv("FALLBACK_LANG") or "").strip()
-
-OCR_CHAR_WHITELIST = os.getenv(
-    "OCR_CHAR_WHITELIST",
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ğĞüÜşŞıİöÖçÇ-_.:/@#()[]{}+&%!?,'\" "
-)
-OCR_STRICT_WHITELIST = os.getenv("OCR_STRICT_WHITELIST", "0") in ("1","true","True")
-
-# Hız ayarları
 OCR_COOLDOWN_SEC = int(os.getenv("OCR_COOLDOWN_SEC", "6"))
+OCR_CHAR_WHITELIST = os.getenv("OCR_CHAR_WHITELIST", "")
+TRY_INVERT = os.getenv("TRY_INVERT", "0") in ("1", "true", "True")
+
+# Parallelism
 _PAR = int(os.getenv("OCR_PARALLEL", "0"))
 if _PAR <= 0:
     try:
@@ -88,21 +80,20 @@ if _PAR <= 0:
     except Exception:
         _PAR = 4
 
-# --- YOLO (Icon) ---
-ICON_YOLO_ENABLED = os.getenv("ICON_YOLO_ENABLED", "1") in ("1","true","True")
+# YOLO Config
+ICON_YOLO_ENABLED = os.getenv("ICON_YOLO_ENABLED", "1") in ("1", "true", "True")
 ICON_YOLO_MODEL_PATH = os.getenv("ICON_YOLO_MODEL_PATH", "").strip()
 ICON_YOLO_CONF = float(os.getenv("ICON_YOLO_CONF", "0.35"))
 ICON_YOLO_IOU = float(os.getenv("ICON_YOLO_IOU", "0.5"))
-ICON_MATCH_MIN_IOU = float(os.getenv("ICON_MATCH_MIN_IOU", "0.30"))
-ICON_ONLY_ON_EMPTY = os.getenv("ICON_ONLY_ON_EMPTY", "1") in ("1","true","True")
-ICON_DETECT_WHOLE_SCREEN = os.getenv("ICON_DETECT_WHOLE_SCREEN", "1") in ("1","true","True")
-ICON_BOX_MIN_W = int(os.getenv("ICON_BOX_MIN_W", "10"))
-ICON_BOX_MIN_H = int(os.getenv("ICON_BOX_MIN_H", "10"))
-ICON_BOX_MAX_W = int(os.getenv("ICON_BOX_MAX_W", "256"))
-ICON_BOX_MAX_H = int(os.getenv("ICON_BOX_MAX_H", "256"))
+ICON_MATCH_MIN_IOU = float(os.getenv("ICON_MATCH_MIN_IOU", "0.12"))
+ICON_ONLY_ON_EMPTY = os.getenv("ICON_ONLY_ON_EMPTY", "0") in ("1", "true", "True")
+ICON_DETECT_WHOLE_SCREEN = os.getenv("ICON_DETECT_WHOLE_SCREEN", "1") in ("1", "true", "True")
+ICON_BOX_MIN_W = int(os.getenv("ICON_BOX_MIN_W", "6"))
+ICON_BOX_MIN_H = int(os.getenv("ICON_BOX_MIN_H", "6"))
+ICON_BOX_MAX_W = int(os.getenv("ICON_BOX_MAX_W", "1600"))
+ICON_BOX_MAX_H = int(os.getenv("ICON_BOX_MAX_H", "1600"))
 ICON_CLASS_OVERRIDES = (os.getenv("ICON_CLASS_OVERRIDES") or "").strip()
 
-# İkon sınıf adlarını LLM için normalize et (semantic label)
 ICON_NAME_SEMANTICS: Dict[str, str] = {
     "View": "container",
     "ImageView": "icon",
@@ -110,10 +101,11 @@ ICON_NAME_SEMANTICS: Dict[str, str] = {
     "Line": "separator",
 }
 
-APP_NAME = "AgenTest Controller"
-APP_VER = "0.17.2-minimal-llm-output"
+STRIP_FIELDS = {"controlType", "enabled", "patterns", "idx", "hash"}
 
-STRIP_FIELDS = {"controlType", "enabled", "patterns", "idx"}
+# ============================================================================
+# 2. APP STATE & CACHES
+# ============================================================================
 
 app = FastAPI(title=APP_NAME, version=APP_VER)
 app.add_middleware(
@@ -124,1385 +116,535 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# caches
 app.state.last_raw_state: Optional[Dict[str, Any]] = None
-app.state.last_raw_ts: Optional[float] = None
 app.state.last_sut_error: Optional[Dict[str, Any]] = None
 app.state.last_ods_error: Optional[Dict[str, Any]] = None
-
-
 app.state.ocr_queue: List[Dict[str, Any]] = []
-app.state.ocr_queue_max = 500
 
-# OCR caches
 _OCR_CACHE: Dict[Tuple, Tuple[str, float]] = {}
-_OCR_CACHE_MAX = 800
 _PREPROC_CACHE: Dict[Tuple, Image.Image] = {}
+_OCR_CACHE_MAX = 800
 _PREPROC_MAX = 400
 _COOLDOWN: Dict[Tuple, float] = {}
-
-# YOLO model singletons
 _YOLO_MODEL: Optional[YOLO] = None
 _YOLO_CLASS_NAMES: Dict[int, str] = {}
 
-# -------------------- http utils --------------------
+
+# ============================================================================
+# 3. UTILITIES (Geometry, Text, HTTP)
+# ============================================================================
+
 def _httpx_timeout() -> httpx.Timeout:
     return httpx.Timeout(SUT_TIMEOUT_SEC, read=SUT_TIMEOUT_SEC, connect=5.0)
 
 def _ods_timeout() -> httpx.Timeout:
     return httpx.Timeout(ODS_TIMEOUT_SEC, read=ODS_TIMEOUT_SEC, connect=5.0)
 
+def _screen_size(raw: Dict[str, Any]) -> Tuple[int, int]:
+    scr = raw.get("screen") or {}
+    return int(scr.get("w", 0)), int(scr.get("h", 0))
 
-def _extract_screenshot_b64(raw: Dict[str, Any]) -> Optional[str]:
-    """
-    SUT state içinden screenshot base64 string'ini çıkarır.
-    LLM'e giden state'e base64 eklemeyeceğiz, sadece ODS çağrısında kullanacağız.
-    """
-    if not isinstance(raw, dict):
-        return None
-
-    sc = raw.get("screenshot")
-    if isinstance(sc, dict):
-        for k in ("b64", "image_b64", "image", "data", "screenshot_base64"):
-            v = sc.get(k)
-            if isinstance(v, str) and len(v) > 1000:
-                return v
-
-    if isinstance(sc, str) and len(sc) > 1000:
-        return sc
-
-    for k in ("screenshot_base64", "screenshot_png", "screenshot_jpg", "b64", "image_b64", "image"):
-        v = raw.get(k)
-        if isinstance(v, str) and len(v) > 1000:
-            return v
-
-    return None
-
-
-async def _call_ods_with_base64(b64: str) -> Dict[str, Any]:
-    """
-    OmniParser / ODS servisine base64 ekran görüntüsü gönderir.
-    """
-    if not ODS_URL:
-        raise RuntimeError("ODS_URL is not configured")
-
-    try:
-        async with httpx.AsyncClient(
-            timeout=_ods_timeout(),
-            trust_env=False,
-            follow_redirects=True,  # <<< ÖNEMLİ: 307'yi takip et
-        ) as client:
-            r = await client.post(ODS_URL, json={"base64_image": b64})
-            r.raise_for_status()
-            data = r.json()
-            app.state.last_ods_error = None
-            return data
-    except Exception as e:
-        app.state.last_ods_error = {
-            "type": type(e).__name__,
-            "url": ODS_URL,
-            "message": str(e),
-        }
-        raise
-
-
-async def _fetch_raw_state() -> Dict[str, Any]:
-    try:
-        async with httpx.AsyncClient(timeout=_httpx_timeout(), trust_env=False) as client:
-            r = await client.post(SUT_STATE_URL, json={})
-            r.raise_for_status()
-            data = r.json()
-    except Exception as e:
-        app.state.last_sut_error = {
-            "type": type(e).__name__,
-            "url": SUT_STATE_URL,
-            "message": str(e),
-        }
-        raise HTTPException(status_code=502, detail=f"SUT /state failed: {app.state.last_sut_error}")
-    app.state.last_raw_state = data
-    app.state.last_raw_ts = time.time()
-    app.state.last_sut_error = None
-    return data
-
-# -------------------- geometry --------------------
 def _rect_area(el: Dict[str, Any]) -> int:
     r = (el.get("rect") or {})
     w = max(0, int(r.get("r", 0)) - int(r.get("l", 0)))
     h = max(0, int(r.get("b", 0)) - int(r.get("t", 0)))
     return w * h
 
-def _screen_size(raw: Dict[str, Any]) -> Tuple[int, int]:
-    scr = raw.get("screen") or {}
-    return int(scr.get("w", 0)), int(scr.get("h", 0))
+def _extract_rect_xywh(rect_obj: Any) -> Optional[Dict[str, float]]:
+    if not isinstance(rect_obj, dict): return None
+    if all(k in rect_obj for k in ("x", "y", "w", "h")):
+        return {"x": float(rect_obj["x"]), "y": float(rect_obj["y"]), "w": float(rect_obj["w"]), "h": float(rect_obj["h"])}
+    if all(k in rect_obj for k in ("l", "r", "t", "b")):
+        return {"x": float(rect_obj["l"]), "y": float(rect_obj["t"]), "w": float(rect_obj["r"]) - float(rect_obj["l"]), "h": float(rect_obj["b"]) - float(rect_obj["t"])}
+    return None
 
-def _elements_from_ods_response(ods_raw: dict, screen: dict) -> list[dict]:
-    """
-    ODS raw yanıtından (parsed_content_list) LLM'e gidecek element listesini üretir.
+def _rect_from_element(el: Dict[str, Any], screen: Optional[Dict[str, Any]]) -> Optional[Dict[str, float]]:
+    rect = _extract_rect_xywh(el.get("rect"))
+    if rect: return rect
+    center = el.get("center")
+    if isinstance(center, dict) and "x" in center and "y" in center:
+        size = 12.0
+        cx, cy = float(center["x"]), float(center["y"])
+        return {"x": cx - size/2, "y": cy - size/2, "w": size, "h": size}
+    return None
 
-    - text + icon tüm item'ları alır
-    - content'i name_ods'e yazar
-    - bbox + ekran boyutuna göre center (x, y) hesaplar
-    - Hiçbir ekstra filtre / kırpma yapmaz
-    """
-    w = screen.get("w", 1920)
-    h = screen.get("h", 1080)
+def _center_from_element(el: Dict[str, Any], rect: Optional[Dict[str, float]]) -> Optional[Dict[str, float]]:
+    center = el.get("center")
+    if isinstance(center, dict) and "x" in center and "y" in center:
+        return {"x": float(center["x"]), "y": float(center["y"])}
+    if rect:
+        return {"x": rect["x"] + rect["w"]/2.0, "y": rect["y"] + rect["h"]/2.0}
+    return None
 
-    items = ods_raw.get("parsed_content_list") or []
-    elements: list[dict] = []
-
-    for item in items:
-        item_type = item.get("type")
-        if item_type not in ("text", "icon"):
-            # Sadece text ve icon istiyoruz
-            continue
-
-        bbox = item.get("bbox") or []
-        if len(bbox) != 4:
-            # Center hesaplayamayacağımız bozuk bbox'ları at
-            continue
-
-        x1, y1, x2, y2 = bbox
-        cx = (x1 + x2) / 2.0 * w
-        cy = (y1 + y2) / 2.0 * h
-
-        content = item.get("content")
-        # Hiçbir şey yazmıyorsa bile None yerine boş string olsun
-        if content is None:
-            content = ""
-
-        elements.append(
-            {
-                "name_ods": content,  # ← DEĞİŞTİRİLDİ (name → name_ods)
-                "center": {
-                    "x": float(cx),
-                    "y": float(cy),
-                },
-            }
-        )
-
-    return elements
-
-def _iou(a: Dict[str, int], b: Dict[str, int]) -> float:
-    ax1, ay1, ax2, ay2 = int(a["l"]), int(a["t"]), int(a["r"]), int(a["b"])
-    bx1, by1, bx2, by2 = int(b["l"]), int(b["t"]), int(b["r"]), int(b["b"])
-    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
-    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
-    iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
-    inter = iw * ih
-    area_a = max(0, (ax2 - ax1)) * max(0, (ay2 - ay1))
-    area_b = max(0, (bx2 - bx1)) * max(0, (by2 - by1))
-    union = max(1, area_a + area_b - inter)
-    return inter / union
-
-# -------------------- names --------------------
-_ZW_REMOVE = {"Cf"}
-_ws_re = re.compile(r"\s+", re.UNICODE)
-_html_tag_re = re.compile(r"<[^>]+>")
+def _extract_screenshot_b64(raw: Dict[str, Any]) -> Optional[str]:
+    if not isinstance(raw, dict): return None
+    sc = raw.get("screenshot")
+    if isinstance(sc, dict):
+        return sc.get("b64") or sc.get("image_b64") or sc.get("data")
+    if isinstance(sc, str) and len(sc) > 1000:
+        return sc
+    return raw.get("screenshot_base64") or raw.get("b64")
 
 def _strip_html_basic(s: str) -> str:
-    if not s:
-        return ""
+    if not s: return ""
     s = html.unescape(s)
-    s = _html_tag_re.sub(" ", s)
+    s = re.sub(r"<[^>]+>", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+def _post_normalize(s: str) -> str:
+    if not s: return s
     s = re.sub(r"\s+", " ", s).strip()
     return s
-
-def _canonical_name(name: str) -> str:
-    s = (name or "").strip()
-    s = unicodedata.normalize("NFKC", s)
-    s = "".join(ch for ch in s if unicodedata.category(ch) not in _ZW_REMOVE)
-    s = _ws_re.sub(" ", s)
-    return s.casefold()
 
 def _effective_name(el: Dict[str, Any]) -> str:
     raw = (el.get("name") or "").strip()
     return raw if raw else (el.get("name_ocr") or "").strip()
 
-def _canonical_effective_name(el: Dict[str, Any]) -> str:
-    return _canonical_name(_effective_name(el))
+def _normalized_name_from_icon(el: Dict[str, Any]) -> Optional[str]:
+    label = (el.get("name_icon") or "").strip()
+    if not label: return None
+    return ICON_NAME_SEMANTICS.get(label, label)
 
-def _group_key_for(el: Dict[str, Any]) -> tuple:
-    cname = _canonical_effective_name(el)
-    if DEDUPE_KEY_MODE == "name_active":
-        return (cname, bool(el.get("windowActive")))
-    return (cname,)
+def _add_element_type_info(el: Dict[str, Any]) -> str:
+    if "type" in el: return el["type"]
+    ct = str(el.get("controlType", "")).lower()
+    if ct in ("button", "checkbox", "radiobutton", "togglebutton"): return "button"
+    if ct in ("edit", "textbox", "document"): return "input"
+    if ct in ("text", "label", "statictext"): return "text"
+    if ct in ("combobox", "list", "listitem", "treeitem"): return "list"
+    if ct in ("image", "icon"): return "icon"
+    if ct in ("window", "pane", "group"): return "container"
+    return "unknown"
 
-_CT_PRIORITY = {
-    "Text": 1, "Edit": 2, "Button": 3, "Hyperlink": 4, "ListItem": 5, "TabItem": 6,
-    "ComboBox": 7, "MenuItem": 8, "Window": 9, "Other": 10
-}
 def _ct_rank(el: Dict[str, Any]) -> int:
     ct = (el.get("controlType") or "Other")
-    return _CT_PRIORITY.get(ct, 10)
+    prio = {"Text": 1, "Edit": 2, "Button": 3, "Window": 9, "Other": 10}
+    return prio.get(ct, 10)
 
-# -------------------- OCR queue helpers --------------------
-def _enqueue_ocr(items: List[Dict[str, Any]], reason: str, key: tuple) -> None:
-    if not items:
-        return
-    ts = time.time()
-    to_add = [{
-        "ts": ts,
-        "reason": reason,
-        "key": str(key),
-        "name": it.get("name"),
-        "rect": it.get("rect"),
-        "center": it.get("center"),
-        "path": it.get("path"),
-        "windowActive": it.get("windowActive", None),
-        "controlType": it.get("controlType", None),
-    } for it in items]
-    app.state.ocr_queue.extend(to_add)
-    overflow = max(0, len(app.state.ocr_queue) - app.state.ocr_queue_max)
-    if overflow:
-        del app.state.ocr_queue[0:overflow]
+# ============================================================================
+# 4. OCR & YOLO CORE LOGIC (FULL IMPLEMENTATION)
+# ============================================================================
 
-# -------------------- screenshot & crops --------------------
-def _screenshot_from_raw(raw: Dict[str, Any]) -> Tuple[Optional[Image.Image], Optional[str]]:
-    if not isinstance(raw, dict):
-        return None, None
-    b64 = None
-    sc = raw.get("screenshot")
-    if isinstance(sc, dict):
-        b64 = sc.get("b64") or sc.get("image_b64") or sc.get("image") or sc.get("data")
-        if isinstance(b64, str) and len(b64) < 1000:
-            b64 = None
-    elif isinstance(sc, str) and len(sc) > 1000:
-        b64 = sc
-    if not b64:
-        for k in ("screenshot_base64", "screenshot_png", "screenshot_jpg", "b64", "image_b64", "image"):
-            v = raw.get(k)
-            if isinstance(v, str) and len(v) > 1000:
-                b64 = v
-                break
-    if not b64:
-        return None, None
+def _pad_and_crop(img: Image.Image, rect: Dict[str, Any]) -> Image.Image:
+    img_w, img_h = int(img.width), int(img.height)
+    try:
+        l, t = int(rect.get("x", 0)), int(rect.get("y", 0))
+        w, h = int(rect.get("w", 0)), int(rect.get("h", 0))
+        r, b = l + w, t + h
+    except: return img
+    pad = RECT_PAD_PX
+    l, t = max(0, l-pad), max(0, t-pad)
+    r, b = min(img_w, r+pad), min(img_h, b+pad)
+    if r <= l or b <= t: return img
+    return img.crop((l, t, r, b))
+
+def _ocr_try(crop: Image.Image, lang: str, psm: int) -> Tuple[str, float]:
+    cfg = f"--psm {psm}"
+    if OCR_CHAR_WHITELIST: cfg += f' -c tessedit_char_whitelist="{OCR_CHAR_WHITELIST}"'
+    try:
+        data = pytesseract.image_to_data(crop, lang=lang, config=cfg, output_type=pytesseract.Output.DICT)
+        words = data.get("text", [])
+        confs = data.get("conf", [])
+        pairs = [(w.strip(), float(c)) for w, c in zip(words, confs) if w and w.strip() and float(c) >= 0]
+        if not pairs: return "", 0.0
+        text = " ".join(w for w, _ in pairs)
+        avg_conf = sum(c for _, c in pairs) / len(pairs)
+        return _post_normalize(text), avg_conf
+    except: return "", 0.0
+
+def _best_psm_candidates(rect: Dict[str, Any]) -> List[int]:
+    h = max(1, int(rect.get("h", 0)))
+    w = max(1, int(rect.get("w", 0)))
+    return [7, 11] if (h <= 40 or w >= 4*h) else [6, 11, 3]
+
+def _screenshot_from_raw_img(raw: Dict[str, Any]) -> Tuple[Optional[Image.Image], Optional[str]]:
+    b64 = _extract_screenshot_b64(raw)
+    if not b64: return None, None
     try:
         data = base64.b64decode(b64, validate=False)
         md5 = hashlib.md5(data).hexdigest()
         return Image.open(io.BytesIO(data)).convert("RGB"), md5
-    except Exception:
-        return None, None
+    except: return None, None
 
-def _too_big_rect(rect: Dict[str, Any], scr_w: int, scr_h: int) -> bool:
-    if not (scr_w and scr_h): return False
-    l, t = max(0, int(rect.get("l", 0))), max(0, int(rect.get("t", 0)))
-    r, b = int(rect.get("r", 0)), int(rect.get("b", 0))
-    r = max(l + 1, r); b = max(t + 1, b)
-    area = (r - l) * (b - t)
-    return area > OCR_MAX_AREA_FRAC * scr_w * scr_h
-
-def _too_thin_line(rect: Dict[str, Any], scr_w: int) -> bool:
-    h = max(0, int(rect.get("b", 0)) - int(rect.get("t", 0)))
-    w = max(0, int(rect.get("r", 0)) - int(rect.get("l", 0)))
-    if h <= THIN_LINE_HARD_PX: return True
-    if h <= THIN_LINE_SOFT_H and w > max(THIN_LINE_SOFT_W, scr_w // 2): return True
-    return False
-
-def _pad_and_crop(img: Image.Image, rect: Dict[str, Any]) -> Image.Image:
-    # sanitize & clamp
-    img_w, img_h = int(img.width), int(img.height)
-
-    try:
-        l = int(rect.get("l", 0)); t = int(rect.get("t", 0))
-        r = int(rect.get("r", l + 1)); b = int(rect.get("b", t + 1))
-    except Exception:
-        # rect sayı değilse, tüm resmi döndür
-        return img
-
-    # ensure basic ordering
-    if r <= l: r = l + 1
-    if b <= t: b = t + 1
-
-    # padding
-    pad = max(0, int(RECT_PAD_PX))
-    l = max(0, l - pad); t = max(0, t - pad)
-    r = r + pad; b = b + pad
-
-    # clamp to image bounds (ve ordering'i tekrar garanti et)
-    l = min(max(0, l), max(0, img_w - 1))
-    t = min(max(0, t), max(0, img_h - 1))
-    r = min(max(l + 1, r), img_w)
-    b = min(max(t + 1, b), img_h)
-
-    # güvenlik: yine de anormalse tüm resmi ver
-    if r <= l or b <= t:
-        return img
-
-    return img.crop((l, t, r, b))
-
-
-# mojibake fix & post-normalize
-_MOJI_FIXES = {
-    "Ã§":"ç","Ã‡":"Ç","Ã¶":"ö","Ã–":"Ö","Ã¼":"ü","Ãœ":"Ü",
-    "Ä±":"ı","Ä°":"İ","ÅŸ":"ş","Åž":"Ş","ÄŸ":"ğ","Äž":"Ğ",
-    "Â©":"©","Â®":"®","Â·":"·","Â«":"«","Â»":"»","Â":"",
-}
-_lead_junk_re = re.compile(r"^[^\wğĞüÜşŞıİöÖçÇ]+")
-_many_seps_re = re.compile(r"(\|\s*){3,}")
-_menu_pattern_re = re.compile(r"([A-Z][a-z]+){4,}")
-
-def _post_normalize(s: str) -> str:
-    if not s: return s
-    out = s
-    for k,v in _MOJI_FIXES.items():
-        if k in out: out = out.replace(k,v)
-    out = _lead_junk_re.sub("", out).strip()
-    out = re.sub(r"\s+", " ", out)
-    out = _many_seps_re.sub("|", out)
-    if _menu_pattern_re.search(out) and len(out) > 30:
-        words = out.split()
-        if words and len(words[0]) < 20:
-            out = words[0]
-    return out
-
-# -------------------- OCR core --------------------
-def _ocr_try(crop: Image.Image, shash: str, lang: str, psm: int, cfg_extra: str = "") -> Tuple[str, float, bool]:
-    cfg = f"--psm {psm}" + (f" {cfg_extra}" if cfg_extra else "")
-    if OCR_CHAR_WHITELIST:
-        cfg += f' -c tessedit_char_whitelist="{OCR_CHAR_WHITELIST}"'
-        if OCR_STRICT_WHITELIST:
-            cfg += " -c classify_bln_numeric_mode=1"
-    try:
-        data = pytesseract.image_to_data(crop, lang=lang, config=cfg, output_type=pytesseract.Output.DICT)
-        words = data.get("text", []) or []
-        confs = data.get("conf", []) or []
-        pairs = [(w.strip(), float(c)) for w, c in zip(words, confs) if w and w.strip() and float(c) >= 0]
-        if not pairs:
-            text, avg_conf = "", 0.0
-        else:
-            text = " ".join(w for w, _ in pairs)
-            avg_conf = sum(c for _, c in pairs) / max(1, len(pairs))
-        text = _post_normalize(_strip_html_basic(text))
-        return text, avg_conf, False
-    except Exception:
-        return "", 0.0, False
-
-def _best_psm_candidates(rect: Dict[str, Any]) -> List[int]:
-    h = max(1, int(rect.get("b", 0)) - int(rect.get("t", 0)))
-    w = max(1, int(rect.get("r", 0)) - int(rect.get("l", 0)))
-    single_line = (h <= 40) or (w >= 4*h)
-    if OCR_FAST_MODE:
-        return [7 if single_line else 6, 11]
-    primary = 7 if single_line else 6
-    order = [primary, (6 if primary == 7 else 7), 11, 13]
-    seen, uniq = set(), []
-    for x in order:
-        if x not in seen:
-            seen.add(x); uniq.append(x)
-    return uniq
-
-def _ocr_with_quality(img: Image.Image, shash: str, rect: Dict[str, Any],
-                      lang_main: str, lang_fallback: str, psm_list: List[int],
-                      min_conf_target: float) -> Tuple[str, float, int, str, str, bool, bool]:
-    base_key = (shash, rect.get("l"), rect.get("t"), rect.get("r"), rect.get("b"), RECT_PAD_PX)
-
-    # cooldown
-    now = time.time()
-    if (base_key in _COOLDOWN) and (now - _COOLDOWN[base_key] < OCR_COOLDOWN_SEC):
-        return "", 0.0, psm_list[0], lang_main, "cooldown", True, True
-    _COOLDOWN[base_key] = now
-
-    def _get_pp(invert: bool) -> Image.Image:
-        k = base_key + (invert,)
-        if k in _PREPROC_CACHE:
-            return _PREPROC_CACHE[k]
-        crop = _pad_and_crop(img, rect)
-        g = ImageOps.grayscale(crop)
-        if invert: g = ImageOps.invert(g)
-        g = g.resize((max(1, int(g.width * 2.0)), max(1, int(g.height * 2.0))))
-        g = ImageOps.autocontrast(g)
-        g = g.filter(ImageFilter.UnsharpMask(radius=1.0, percent=120, threshold=2))
-        try:
-            hist = g.histogram()
-            mean = max(1, sum(i * c for i, c in enumerate(hist)) // max(1, sum(hist)))
-        except Exception:
-            mean = 128
-        g = g.point(lambda p: 255 if p > mean else 0)
-        if len(_PREPROC_CACHE) > _PREPROC_MAX:
-            for _ in range(32):
-                try:
-                    _PREPROC_CACHE.pop(next(iter(_PREPROC_CACHE)))
-                except Exception:
-                    break
-        _PREPROC_CACHE[k] = g
-        return g
-
-    best = ("", 0.0, (psm_list[0] if psm_list else 6), lang_main, "normal", False, False)
-
-    def should_stop(conf: float) -> bool:
-        return (conf >= OCR_EARLY_STOP_ABS) or (conf >= (min_conf_target + OCR_EARLY_STOP_DELTA))
-
-    def try_langs(pp: Image.Image, source: str) -> bool:
-        nonlocal best
-        langs = [lang_main] if OCR_FAST_MODE or not lang_fallback else [lang_main, lang_fallback]
-        for psm in psm_list:
-            for lang in langs:
-                ck = base_key + (lang, psm, source)
-                if ck in _OCR_CACHE:
-                    t, c = _OCR_CACHE[ck]
-                    cache_hit = True
-                else:
-                    t, c, cache_hit = _ocr_try(pp, shash, lang, psm, cfg_extra=("--oem 1" if lang != lang_main else ""))
-                    if len(_OCR_CACHE) > _OCR_CACHE_MAX:
-                        for _ in range(64):
-                            try:
-                                _OCR_CACHE.pop(next(iter(_OCR_CACHE)))
-                            except Exception:
-                                break
-                    _OCR_CACHE[ck] = (t, c)
-                if c > best[1]:
-                    best = (t, c, psm, lang, source, best[5], cache_hit)
-                if should_stop(c):
-                    best = (best[0], best[1], psm, lang, source, True, best[6])
-                    return True
-        return False
-
-    if try_langs(_get_pp(False), "normal"):
-        return best
-    if TRY_INVERT:
-        try_langs(_get_pp(True), "invert")
-    return best
-
-def _enrich_with_ocr_if_possible(raw: Dict[str, Any],
-                                 elements: List[Dict[str, Any]],
-                                 dbg: Dict[str, Any] | None = None) -> None:
-    if not OCR_ENABLED:
-        if dbg is not None:
-            dbg["ocr_sync_done"] = 0
-            dbg["ocr_sync_skipped"] = "disabled"
+def _enrich_with_ocr_if_possible(raw: Dict[str, Any], elements: List[Dict[str, Any]], dbg: Dict) -> None:
+    if not OCR_ENABLED: 
+        dbg["ocr_skipped"] = "disabled"
+        return
+        
+    img, shash = _screenshot_from_raw_img(raw)
+    if not img: 
+        dbg["ocr_skipped"] = "no_image"
         return
 
-    img, shash = _screenshot_from_raw(raw)
-    if img is None or not shash:
-        if dbg is not None:
-            dbg["ocr_sync_done"] = 0
-            dbg["ocr_sync_skipped"] = "no_screenshot_in_state"
-        return
-
-    scr_w, scr_h = _screen_size(raw)
-
-    empty_effective = [el for el in elements if not _effective_name(el)]
-    groups: Dict[str, List[Dict[str, Any]]] = {}
+    candidates = []
     for el in elements:
-        eff = _canonical_effective_name(el)
-        if eff:
-            groups.setdefault(eff, []).append(el)
-    dup_elems: List[Dict[str, Any]] = []
-    for _, grp in groups.items():
-        if len(grp) > 1:
-            dup_elems.extend(grp)
+        if not _effective_name(el):
+            candidates.append(el)
+    
+    candidates.sort(key=lambda e: (_ct_rank(e), _rect_area(e)))
+    workset = candidates[:OCR_SYNC_BUDGET]
 
-    candidates = empty_effective + dup_elems
+    def _process_ocr(el):
+        r = _rect_from_element(el, None)
+        if not r: return {}
+        # convert to simple rect for crop
+        # _rect_from_element returns x,y,w,h
+        
+        psms = _best_psm_candidates(r)
+        best_txt, best_conf = "", 0.0
+        
+        crop = _pad_and_crop(img, r)
+        
+        t, c = _ocr_try(crop, TESSERACT_LANG, psms[0])
+        if c > best_conf: best_txt, best_conf = t, c
+        
+        if TRY_INVERT and best_conf < 50:
+            t, c = _ocr_try(ImageOps.invert(ImageOps.grayscale(crop)), TESSERACT_LANG, psms[0])
+            if c > best_conf: best_txt, best_conf = t, c
+            
+        if best_conf >= OCR_ACCEPT_LOWCONF_MIN and len(best_txt) >= OCR_MIN_CHAR:
+            return {"name_ocr": best_txt, "name_ocr_conf": best_conf}
+        return {}
 
-    def _prio_tuple(el: Dict[str, Any]):
-        return (_ct_rank(el), _rect_area(el))
-    candidates.sort(key=_prio_tuple)
+    if workset:
+        with cf.ThreadPoolExecutor(max_workers=_PAR) as ex:
+            results = list(ex.map(_process_ocr, workset))
+        
+        matched = 0
+        for el, res in zip(workset, results):
+            if res:
+                el.update(res)
+                matched += 1
+        
+        if dbg is not None:
+            dbg["ocr_attempted"] = len(workset)
+            dbg["ocr_matched"] = matched
 
-    workset = []
-    for el in candidates:
-        if len(workset) >= OCR_SYNC_BUDGET: break
-        r = el.get("rect")
-        if not r: continue
-        if OCR_USE_HARD_FILTERS:
-            if _too_big_rect(r, scr_w, scr_h): continue
-            if _too_thin_line(r, scr_w): continue
-        workset.append(el)
-
-    sync_done = 0
-    attempted = 0
-    rejected_empty = 0
-    accepted_high = 0
-    accepted_low = 0
-    tried_psm = 0
-    early_stops = 0
-    cache_hits = 0
-    cooldown_skips = 0
-
-    def _process_el(el: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        r = el.get("rect") or {}
-        psm_list = _best_psm_candidates(r)
-        is_empty = not (el.get("name") or "").strip()
-        min_conf = OCR_MIN_CONF_EMPTY if is_empty else OCR_MIN_CONF_DUP
-
-        text, avg_conf, used_psm, used_lang, source, early, cache_hit = _ocr_with_quality(
-            img, shash, r, TESSERACT_LANG,
-            ("" if OCR_FAST_MODE else FALLBACK_LANG),
-            psm_list, min_conf
-        )
-
-        stats = {
-            "attempted": 1,
-            "tried_psm": len(psm_list),
-            "early": 1 if early else 0,
-            "cache_hit": 1 if cache_hit else 0,
-            "cooldown": 1 if source == "cooldown" else 0,
-            "rejected_empty": 0,
-            "accepted_high": 0,
-            "accepted_low": 0,
-            "sync_done": 0,
-        }
-
-        if not text:
-            stats["rejected_empty"] = 1
-            return {}, stats
-
-        updates: Dict[str, Any] = {}
-        if (len(text) >= OCR_MIN_CHAR) and (len(text) <= OCR_MAX_CHAR) and (avg_conf >= min_conf):
-            if is_empty:
-                updates["name_ocr"] = text
-            else:
-                arr = el.get("alt_names_ocr")
-                if not isinstance(arr, list): arr = []
-                if text not in arr: arr.append(text)
-                if len(arr) > 3: arr = arr[-3:]
-                updates["alt_names_ocr"] = arr
-            updates.update({
-                "name_ocr_conf": avg_conf,
-                "name_ocr_psm": used_psm,
-                "name_ocr_lang": used_lang,
-                "name_ocr_src": source,
-                "name_ocr_quality": "high",
-            })
-            stats["accepted_high"] = 1
-            stats["sync_done"] = 1
-            return updates, stats
-
-        if avg_conf >= OCR_ACCEPT_LOWCONF_MIN:
-            updates.update({
-                "name_ocr_tentative": text,
-                "name_ocr_conf": avg_conf,
-                "name_ocr_psm": used_psm,
-                "name_ocr_lang": used_lang,
-                "name_ocr_src": source,
-                "name_ocr_quality": "low",
-            })
-            stats["accepted_low"] = 1
-            stats["sync_done"] = 1
-            return updates, stats
-
-        stats["rejected_empty"] = 1
-        return {}, stats
-
-    with cf.ThreadPoolExecutor(max_workers=_PAR) as ex:
-        results = list(ex.map(_process_el, workset))
-
-    for el, (updates, st) in zip(workset, results):
-        attempted += st["attempted"]
-        tried_psm += st["tried_psm"]
-        early_stops += st["early"]
-        cache_hits += st["cache_hit"]
-        cooldown_skips += st["cooldown"]
-        rejected_empty += st["rejected_empty"]
-        accepted_high += st["accepted_high"]
-        accepted_low += st["accepted_low"]
-        sync_done += st["sync_done"]
-        if updates:
-            el.update(updates)
-
-    if dbg is not None:
-        dbg.update({
-            "ocr_sync_done": sync_done,
-            "ocr_attempted": attempted,
-            "ocr_high": accepted_high,
-            "ocr_low": accepted_low,
-            "ocr_early_stops": early_stops,
-            "ocr_cache_hits": cache_hits,
-            "ocr_cooldown_skipped": cooldown_skips,
-            "ocr_sync_pending": max(0, len(candidates) - len(workset)),
-            "ocr_rejected_empty": rejected_empty,
-            "ocr_tried_psm": tried_psm,
-            "ocr_parallel": _PAR,
-        })
-
-# -------------------- YOLO Icon Detection --------------------
 def _yolo_is_ready() -> bool:
     return _YOLO_AVAILABLE and bool(ICON_YOLO_MODEL_PATH)
 
 def _load_yolo_once() -> None:
     global _YOLO_MODEL, _YOLO_CLASS_NAMES
-    if _YOLO_MODEL is not None:
-        return
-    if not _yolo_is_ready():
-        return
+    if _YOLO_MODEL is not None: return
+    if not _yolo_is_ready(): return
     try:
         _YOLO_MODEL = YOLO(ICON_YOLO_MODEL_PATH)
-        class_names = {}
-        try:
-            names = getattr(_YOLO_MODEL.model, "names", None) or getattr(_YOLO_MODEL, "names", None)
-            if isinstance(names, dict):
-                class_names = {int(k): str(v) for k, v in names.items()}
-            elif isinstance(names, list):
-                class_names = {i: str(n) for i, n in enumerate(names)}
-        except Exception:
-            class_names = {}
-        if ICON_CLASS_OVERRIDES:
-            for token in ICON_CLASS_OVERRIDES.split(","):
-                token = token.strip()
-                if not token or ":" not in token: continue
-                cid_s, cname = token.split(":", 1)
-                try:
-                    cid = int(cid_s)
-                    class_names[cid] = cname.strip()
-                except Exception:
-                    pass
-        _YOLO_CLASS_NAMES = class_names
-    except Exception:
+        names = getattr(_YOLO_MODEL.model, "names", {})
+        _YOLO_CLASS_NAMES = {int(k): str(v) for k, v in names.items()}
+    except: 
         _YOLO_MODEL = None
-        _YOLO_CLASS_NAMES = {}
 
-def _cls_name(cid: int) -> str:
-    if cid in _YOLO_CLASS_NAMES:
-        return _YOLO_CLASS_NAMES[cid]
-    return f"class_{cid}"
+def _iou(boxA, boxB):
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+    boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+    boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+    return interArea / float(boxAArea + boxBArea - interArea + 1e-6)
 
-def _bbox_within_limits(xyxy: Tuple[float,float,float,float]) -> bool:
-    x1,y1,x2,y2 = xyxy
-    w = max(0, int(x2 - x1))
-    h = max(0, int(y2 - y1))
-    if w < ICON_BOX_MIN_W or h < ICON_BOX_MIN_H: return False
-    if w > ICON_BOX_MAX_W or h > ICON_BOX_MAX_H: return False
-    return True
-
-def _yolo_on_image(img: Image.Image):
-    if _YOLO_MODEL is None:
-        return []
-    try:
-        res = _YOLO_MODEL.predict(img, conf=ICON_YOLO_CONF, iou=ICON_YOLO_IOU, verbose=False)
-        out = []
-        if not res:
-            return out
-        r0 = res[0]
-        boxes = getattr(r0, "boxes", None)
-        if boxes is None:
-            return out
-        xyxy_list = boxes.xyxy.cpu().numpy().tolist()
-        cls_list = boxes.cls.cpu().numpy().tolist()
-        conf_list = boxes.conf.cpu().numpy().tolist()
-        for xyxy, cid, conf in zip(xyxy_list, cls_list, conf_list):
-            if not _bbox_within_limits(tuple(xyxy)):
-                continue
-            out.append({
-                "xyxy": xyxy,
-                "cls_id": int(cid),
-                "cls_name": _cls_name(int(cid)),
-                "conf": float(conf),
-            })
-        return out
-    except Exception:
-        return []
-
-def _assign_icons_by_overlap(img: Image.Image,
-                             elements: List[Dict[str, Any]],
-                             dbg: Dict[str, Any] | None = None) -> None:
-    dets = _yolo_on_image(img)
-    if dbg is not None:
-        dbg["icon_yolo"] = {
-            "enabled": ICON_YOLO_ENABLED and _yolo_is_ready(),
-            "model_loaded": _YOLO_MODEL is not None,
-            "detections_total": len(dets),
-            "conf": ICON_YOLO_CONF,
-            "iou": ICON_YOLO_IOU,
-            "match_min_iou": ICON_MATCH_MIN_IOU,
-        }
-    if not dets:
+def _enrich_with_icons_yolo(raw: Dict[str, Any], elements: List[Dict[str, Any]], dbg: Dict) -> None:
+    if not ICON_YOLO_ENABLED or not _yolo_is_ready(): 
+        dbg["yolo_skipped"] = "disabled_or_not_ready"
         return
-
-    targets = []
-    for el in elements or []:
-        if ICON_ONLY_ON_EMPTY and _effective_name(el):
-            continue
-        targets.append(el)
-
-    matched = 0
-    for el in targets:
-        r = el.get("rect") or {}
-        if not r: continue
-        el_box = {"l": int(r.get("l", 0)), "t": int(r.get("t", 0)), "r": int(r.get("r", 0)), "b": int(r.get("b", 0))}
-        best = None
-        best_iou = 0.0
-        for d in dets:
-            x1, y1, x2, y2 = d["xyxy"]
-            yb = {"l": int(x1), "t": int(y1), "r": int(x2), "b": int(y2)}
-            iou = _iou(el_box, yb)
-            if iou > best_iou:
-                best_iou = iou
-                best = d
-        if best and best_iou >= ICON_MATCH_MIN_IOU:
-            label = best["cls_name"]
-            conf = best["conf"]
-            el["name_icon"] = label
-            el["name_icon_conf"] = round(conf, 3)
-            el["name_icon_box"] = [int(v) for v in best["xyxy"]]
-            el["name_icon_iou"] = round(best_iou, 3)
-
-            if not el.get("name") and not el.get("name_ocr"):
-                el["name_ocr"] = label
-                el["name_ocr_quality"] = "icon"
-                el["name_ocr_conf"] = max(40.0, 100.0 * conf)
-            else:
-                arr = el.get("alt_names_ocr")
-                if not isinstance(arr, list): arr = []
-                if label not in arr: arr.append(label)
-                el["alt_names_ocr"] = arr[-6:]
-            matched += 1
-
-    if dbg is not None and "icon_yolo" in dbg:
-        dbg["icon_yolo"]["matched"] = matched
-
-def _enrich_with_icons_yolo(raw: Dict[str, Any],
-                            elements: List[Dict[str, Any]],
-                            dbg: Dict[str, Any] | None = None) -> None:
-    if not ICON_YOLO_ENABLED or not _yolo_is_ready():
-        if dbg is not None:
-            dbg["icon_yolo"] = {"enabled": False, "model_loaded": False}
-        return
+    
     _load_yolo_once()
-    if _YOLO_MODEL is None:
-        if dbg is not None:
-            dbg["icon_yolo"] = {"enabled": True, "model_loaded": False}
-        return
-    img, shash = _screenshot_from_raw(raw)
-    if img is None:
-        if dbg is not None:
-            dbg["icon_yolo"] = {"enabled": True, "model_loaded": True, "skipped": "no_screenshot"}
+    if _YOLO_MODEL is None: return
+
+    img, _ = _screenshot_from_raw_img(raw)
+    if not img: 
+        dbg["yolo_skipped"] = "no_image"
         return
 
-    if ICON_DETECT_WHOLE_SCREEN:
-        _assign_icons_by_overlap(img, elements, dbg)
-        return
-
-    targets = []
-    for el in elements or []:
-        if ICON_ONLY_ON_EMPTY and _effective_name(el):
-            continue
-        r = el.get("rect") or {}
-        if not r: continue
-        crop = _pad_and_crop(img, r)
-        targets.append((el, crop))
-
-    tried = 0
-    matched = 0
-    for el, crop in targets:
-        tried += 1
-        try:
-            res = _YOLO_MODEL.predict(crop, conf=ICON_YOLO_CONF, iou=ICON_YOLO_IOU, verbose=False)
-            if not res: continue
-            r0 = res[0]
-            boxes = getattr(r0, "boxes", None)
-            if boxes is None or boxes.xyxy.shape[0] == 0:
-                continue
-            confs = boxes.conf.cpu().numpy().tolist()
-            idx = max(range(len(confs)), key=lambda i: confs[i])
-            cid = int(boxes.cls.cpu().numpy().tolist()[idx])
-            label = _cls_name(cid)
-            conf = float(confs[idx])
-            el["name_icon"] = label
-            el["name_icon_conf"] = round(conf, 3)
-            if not el.get("name") and not el.get("name_ocr"):
-                el["name_ocr"] = label
-                el["name_ocr_quality"] = "icon"
-                el["name_ocr_conf"] = max(40.0, 100.0 * conf)
-            else:
-                arr = el.get("alt_names_ocr")
-                if not isinstance(arr, list): arr = []
-                if label not in arr: arr.append(label)
-                el["alt_names_ocr"] = arr[-6:]
-            matched += 1
-        except Exception:
-            continue
-
-    if dbg is not None:
-        dbg["icon_yolo"] = {
-            "enabled": True,
-            "model_loaded": True,
-            "per_crop_mode": True,
-            "attempted": tried,
-            "matched": matched,
-            "conf": ICON_YOLO_CONF,
-            "iou": ICON_YOLO_IOU,
-        }
-
-# -------------------- JVM → Windows-like normalize --------------------
-_JVM_CLASS_CT_MAP = {
-    "JButton": "Button",
-    "SquareStripeButton": "Button",
-    "CloseButton": "Button",
-    "JLabel": "Text",
-    "TextPanel": "Text",
-    "WithIconAndArrows": "Text",
-    "JBTextField": "Edit",
-    "JTextField": "Edit",
-    "JCheckBox": "Button",
-    "JRadioButton": "Button",
-    "TabItem": "TabItem",
-}
-
-def _is_jvm_state(data: Dict[str, Any]) -> bool:
-    if not isinstance(data, dict):
-        return False
-    st = (data.get("state_type") or "").strip().lower()
-    if st == "jvm": return True
-    if st == "windows": return False
-    if "componentCount" in data and isinstance(data.get("elements"), list):
-        return True
-    if isinstance(data.get("screen"), dict):
-        return False
-    if "b64" in data:
-        return True
-    return False
-
-def _jvm_flatten(nodes: List[Dict[str, Any]],
-                 parent_path: List[str],
-                 out: List[Dict[str, Any]],
-                 mins: Dict[str, int],
-                 maxs: Dict[str, int]) -> None:
-    if not nodes: return
-    for n in nodes:
-        cls = str(n.get("class") or "Unknown")
-        raw_text = (n.get("text") or "").strip()
-        text = _post_normalize(_strip_html_basic(raw_text))
-        x = n.get("x"); y = n.get("y"); w = n.get("width"); h = n.get("height")
-        ct = _JVM_CLASS_CT_MAP.get(cls, "Other")
-
-        token_label = text if text and len(text) <= 64 else cls
-        token = f"{ct}({token_label})" if token_label else f"Other({cls})"
-        path_now = (parent_path + [token])[-3:]
-
-        if isinstance(x, int) and isinstance(y, int) and isinstance(w, int) and isinstance(h, int) and w > 0 and h > 0:
-            l, t, r, b = x, y, x + w, y + h
-            mins["l"] = min(mins["l"], l)
-            mins["t"] = min(mins["t"], t)
-            maxs["r"] = max(maxs["r"], r)
-            maxs["b"] = max(maxs["b"], b)
-
-            out.append({
-                "name": text,
-                "rect": {"l": l, "t": t, "r": r, "b": b},
-                "center": {"x": l + w // 2, "y": t + h // 2},
-                "path": path_now,
-                "controlType": ct,
-                "windowActive": True,
-            })
-
-        ch = n.get("children")
-        if isinstance(ch, list) and ch:
-            _jvm_flatten(ch, path_now, out, mins, maxs)
-
-def _normalize_jvm_state(raw: Dict[str, Any]) -> Dict[str, Any]:
-    b64 = raw.get("b64")
-    roots = raw.get("elements") or []
-    flat: List[Dict[str, Any]] = []
-    mins = {"l": 1<<30, "t": 1<<30}
-    maxs = {"r": 0, "b": 0}
-    _jvm_flatten(roots, [], flat, mins, maxs)
-
-    off_l = 0 if mins["l"] >= 0 else -mins["l"]
-    off_t = 0 if mins["t"] >= 0 else -mins["t"]
-
-    for el in flat:
-        r = el["rect"]
-        r["l"] += off_l; r["t"] += off_t; r["r"] += off_l; r["b"] += off_t
-        c = el["center"]
-        c["x"] += off_l; c["y"] += off_t
-
-    w = max(0, maxs["r"] + off_l)
-    h = max(0, maxs["b"] + off_t)
-
-    norm = {
-        "screen": {"w": w, "h": h, "dpiX": 96, "dpiY": 96},
-        "elements": flat,
-        "timestamp": int(time.time() * 1000),
-        "state_type": "JVM",
-    }
-    if b64 and isinstance(b64, str) and len(b64) > 1000:
-        norm["screenshot"] = {"b64": b64}
-    return norm
-
-def _maybe_normalize(raw: Dict[str, Any]) -> Dict[str, Any]:
     try:
-        if _is_jvm_state(raw):
-            return _normalize_jvm_state(raw)
-        # Windows-like: ensure timestamp and tag state_type
-        if "timestamp" not in raw:
-            raw = dict(raw)
-            raw["timestamp"] = int(time.time() * 1000)
-        if "state_type" not in raw:
-            raw["state_type"] = "Windows"
-        return raw
-    except Exception:
-        return raw
-
-# -------------------- dedupe --------------------
-def _dedupe_by_name_smart(elements: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    groups: Dict[tuple, List[Dict[str, Any]]] = {}
-    dropped_empty = 0
-    for el in (elements or []):
-        eff = _effective_name(el)
-        if not eff:
-            dropped_empty += 1
-            continue
-        groups.setdefault(_group_key_for(el), []).append(el)
-
-    kept: List[Dict[str, Any]] = []
-    duplicate_groups = 0
-    kept_names_preview: List[str] = []
-    ocr_enqueued = 0
-
-    for key, group in groups.items():
-        group_sorted = sorted(group, key=_ct_rank)
-        best_ct = _ct_rank(group_sorted[0])
-        group_ct = [g for g in group_sorted if _ct_rank(g) == best_ct]
-
-        active = [g for g in group_ct if bool(g.get("windowActive"))]
-        candidates = active if active else group_ct
-
-        chosen = min(candidates, key=_rect_area)
-        kept.append(chosen)
-        kept_names_preview.append(_effective_name(chosen) or chosen.get("name", ""))
-
-        leftovers = [g for g in group if g is not chosen]
-        if leftovers:
-            duplicate_groups += 1
-            alt = chosen.get("alt_names_ocr")
-            if not isinstance(alt, list):
-                alt = []
-            for lo in leftovers:
-                if lo.get("name_ocr"):
-                    if lo["name_ocr"] and lo["name_ocr"] not in alt:
-                        alt.append(lo["name_ocr"])
-                if lo.get("name_ocr_tentative"):
-                    if lo["name_ocr_tentative"] and lo["name_ocr_tentative"] not in alt:
-                        alt.append(lo["name_ocr_tentative"])
-                lo_alts = lo.get("alt_names_ocr")
-                if isinstance(lo_alts, list):
-                    for s in lo_alts:
-                        if s and s not in alt:
-                            alt.append(s)
-            if len(alt) > 6:
-                alt = alt[-6:]
-            if alt:
-                chosen["alt_names_ocr"] = alt
-
-            _enqueue_ocr(leftovers, reason="duplicate_dedupe", key=key)
-            ocr_enqueued += len(leftovers)
-
-    debug = {
-        "dedupe_mode": f"{DEDUPE_KEY_MODE}+ct_rank+canon",
-        "dropped_empty_names": dropped_empty,
-        "duplicate_groups": duplicate_groups,
-        "kept_count": len(kept),
-        "kept_names_preview": kept_names_preview[:20],
-        "ocr_enqueued": ocr_enqueued,
-        "ocr_queue_size": len(app.state.ocr_queue),
-    }
-    return kept, debug
-
-# -------------------- finalize for LLM --------------------
-def _normalized_name_from_icon(el: Dict[str, Any]) -> Optional[str]:
-    label = (el.get("name_icon") or "").strip()
-    if not label:
-        return None
-    return ICON_NAME_SEMANTICS.get(label, label)
-
-MIN_CLICKABLE_PX = 12.0
-
-def _extract_rect_xywh(rect_obj: Any) -> Optional[Dict[str, float]]:
-    if not isinstance(rect_obj, dict):
-        return None
-    if all(k in rect_obj for k in ("x", "y", "w", "h")):
-        try:
-            x = float(rect_obj["x"])
-            y = float(rect_obj["y"])
-            w = float(rect_obj["w"])
-            h = float(rect_obj["h"])
-        except (TypeError, ValueError):
-            return None
-        if w <= 0 or h <= 0:
-            return None
-        return {"x": x, "y": y, "w": w, "h": h}
-    if all(k in rect_obj for k in ("l", "r", "t", "b")):
-        try:
-            l = float(rect_obj["l"])
-            r = float(rect_obj["r"])
-            t = float(rect_obj["t"])
-            b = float(rect_obj["b"])
-        except (TypeError, ValueError):
-            return None
-        w = r - l
-        h = b - t
-        if w <= 0 or h <= 0:
-            return None
-        return {"x": l, "y": t, "w": w, "h": h}
-    return None
-
-def _clamp_rect_within_screen(rect: Dict[str, float], screen: Optional[Dict[str, Any]]) -> Dict[str, float]:
-    if not isinstance(screen, dict):
-        return rect
-    sw = screen.get("w")
-    sh = screen.get("h")
-    x, y, w, h = rect["x"], rect["y"], rect["w"], rect["h"]
-    if isinstance(sw, (int, float)) and sw > 0:
-        if x < 0:
-            x = 0.0
-        if x + w > sw:
-            x = max(0.0, sw - w)
-    else:
-        x = max(0.0, x)
-    if isinstance(sh, (int, float)) and sh > 0:
-        if y < 0:
-            y = 0.0
-        if y + h > sh:
-            y = max(0.0, sh - h)
-    else:
-        y = max(0.0, y)
-    rect["x"] = x
-    rect["y"] = y
-    rect["w"] = max(1.0, w)
-    rect["h"] = max(1.0, h)
-    return rect
-
-def _ensure_rect_min_size(rect: Dict[str, float], screen: Optional[Dict[str, Any]], min_size: float = MIN_CLICKABLE_PX) -> Dict[str, float]:
-    w = rect["w"]
-    h = rect["h"]
-    if w >= min_size and h >= min_size:
-        return _clamp_rect_within_screen(rect, screen)
-    cx = rect["x"] + w / 2.0
-    cy = rect["y"] + h / 2.0
-    new_w = max(w, min_size)
-    new_h = max(h, min_size)
-    adjusted = {"x": cx - new_w / 2.0, "y": cy - new_h / 2.0, "w": new_w, "h": new_h}
-    return _clamp_rect_within_screen(adjusted, screen)
-
-def _rect_from_element(el: Dict[str, Any], screen: Optional[Dict[str, Any]]) -> Optional[Dict[str, float]]:
-    rect = _extract_rect_xywh(el.get("rect"))
-    if rect:
-        return _ensure_rect_min_size(rect, screen)
-    center = el.get("center")
-    if isinstance(center, dict) and all(k in center for k in ("x", "y")):
-        try:
-            cx = float(center["x"])
-            cy = float(center["y"])
-        except (TypeError, ValueError):
-            return None
-        # synthetic clickable region; keep modest but >0 size
-        size = MIN_CLICKABLE_PX
-        synthetic = {"x": cx - size / 2.0, "y": cy - size / 2.0, "w": size, "h": size}
-        return _clamp_rect_within_screen(synthetic, screen)
-    return None
-
-def _center_from_element(el: Dict[str, Any], rect: Optional[Dict[str, float]]) -> Optional[Dict[str, float]]:
-    center = el.get("center")
-    if isinstance(center, dict) and all(k in center for k in ("x", "y")):
-        try:
-            float(center["x"])
-            float(center["y"])
-            return {"x": float(center["x"]), "y": float(center["y"])}
-        except (TypeError, ValueError):
-            pass
-    if rect:
-        return {"x": rect["x"] + rect["w"] / 2.0, "y": rect["y"] + rect["h"] / 2.0}
-    return None
-
-def _finalize_elements_for_llm(elements: List[Dict[str, Any]], screen: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """LLM için minimal çıktı: name/name_ocr/name_ods ve center"""
-    out: List[Dict[str, Any]] = []
-    for el in elements or []:
-        # Name kaynağını belirle
-        original_name = (el.get("name") or "").strip()
-        ocr_name = (el.get("name_ocr") or "").strip()
-        ods_name = (el.get("name_ods") or "").strip()  # ← EKLE
-        icon_name = _normalized_name_from_icon(el)
+        results = _YOLO_MODEL.predict(img, conf=ICON_YOLO_CONF, iou=ICON_YOLO_IOU, verbose=False)
+        if not results: return
         
-        # Öncelik sırası: name > name_ods > name_ocr > icon
-        final_name = None
-        name_key = "name"
-        
-        if original_name:
-            final_name = original_name
-            name_key = "name"
-        elif ods_name:  
-            final_name = ods_name
-            name_key = "name_ods"
-        elif ocr_name:
-            final_name = ocr_name
-            name_key = "name_ocr"
-        elif icon_name:
-            final_name = icon_name
-            name_key = "name_ocr"  
-        
-        if not final_name:
-            continue
-        
-        # Center'ı hesapla
-        rect = _rect_from_element(el, screen)
-        center = _center_from_element(el, rect)
-        if center is None:
-            continue
-        
-        # Minimal çıktı: kaynağına göre name, name_ods veya name_ocr
-        out.append({
-            name_key: final_name,
-            "center": center
-        })
-    
-    return out
+        boxes = results[0].boxes
+        detections = []
+        for box in boxes:
+            xyxy = box.xyxy[0].cpu().numpy().tolist()
+            conf = float(box.conf[0])
+            cls_id = int(box.cls[0])
+            cls_name = _YOLO_CLASS_NAMES.get(cls_id, f"class_{cls_id}")
+            
+            w = xyxy[2] - xyxy[0]
+            h = xyxy[3] - xyxy[1]
+            if w < ICON_BOX_MIN_W or h < ICON_BOX_MIN_H: continue
+            detections.append({"box": xyxy, "label": cls_name, "conf": conf})
 
-# -------------------- strip (for /state/filtered inspection) --------------------
-def _strip_fields_for_llm(elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    cleaned: List[Dict[str, Any]] = []
-    for el in elements or []:
-        cleaned.append({k: v for k, v in el.items() if k not in STRIP_FIELDS})
-    return cleaned
+        matched = 0
+        for el in elements:
+            if not ICON_ONLY_ON_EMPTY or not _effective_name(el):
+                r = _rect_from_element(el, None)
+                if not r: continue
+                el_box = [r["x"], r["y"], r["x"]+r["w"], r["y"]+r["h"]]
+                
+                best_iou = 0
+                best_det = None
+                for det in detections:
+                    iou_val = _iou(el_box, det["box"])
+                    if iou_val > best_iou:
+                        best_iou = iou_val
+                        best_det = det
+                
+                if best_det and best_iou >= ICON_MATCH_MIN_IOU:
+                    el["name_icon"] = best_det["label"]
+                    el["name_icon_conf"] = best_det["conf"]
+                    matched += 1
+                    
+        if dbg is not None:
+            dbg["yolo_detections"] = len(detections)
+            dbg["yolo_matched"] = matched
 
-# -------------------- filter pipelines --------------------
-def _filter_state_for_llm(raw: Dict[str, Any]) -> Dict[str, Any]:
-    proc = _maybe_normalize(raw)
-    elems = proc.get("elements") or []
-    dbg: Dict[str, Any] = {}
+    except Exception as e:
+        print(f"YOLO Error: {e}")
 
-    # Enrichment (OCR ve YOLO)
-    _enrich_with_ocr_if_possible(proc, elems, dbg)
-    _enrich_with_icons_yolo(proc, elems, dbg)
+# ============================================================================
+# 5. EXTERNAL SERVICES (Fetch State)
+# ============================================================================
 
-    # Dedup'u sadece OCR kuyruğu/yan etkiler için çalıştır
-    unique, _debug = _dedupe_by_name_smart(elems)
-
-    # INCLUDE_DUPLICATES_FOR_LLM ayarına göre kaynak seç
-    src = elems if INCLUDE_DUPLICATES_FOR_LLM else unique
-
-    # LLM için minimal finalize (sadece name + center)
-    final_elems = _finalize_elements_for_llm(src, proc.get("screen"))
-    
-    return {
-        "screen": proc.get("screen"),
-        "timestamp": int(time.time()*1000),
-        "elements": final_elems
-    }
-
-def _filter_state_from_ods(raw: Dict[str, Any], ods: Dict[str, Any]) -> Dict[str, Any]:
-    proc = _maybe_normalize(raw)
-    screen = proc.get("screen") or {}
-
-    ods_elements = _elements_from_ods_response(ods, screen)
-    final_elems = _finalize_elements_for_llm(ods_elements, screen)
-
-    return {
-        "screen": screen,
-        "timestamp": int(time.time() * 1000),
-        "elements": final_elems,
-        "_debug": {
-            "source": "ods",
-            "ods_item_count": len(ods_elements),
-        },
-    }
-
-
-
-
-def _filter_state_for_inspect(raw: Dict[str, Any]) -> Dict[str, Any]:
-    proc = _maybe_normalize(raw)
-    elems = proc.get("elements") or []
-    dbg: Dict[str, Any] = {}
-    _enrich_with_ocr_if_possible(proc, elems, dbg)
-    _enrich_with_icons_yolo(proc, elems, dbg)
-    unique, d2 = _dedupe_by_name_smart(elems)
-    d2.update({k: v for k, v in dbg.items() if k.startswith("ocr_") or k.startswith("icon_yolo")})
-    slim = _strip_fields_for_llm(unique)
-    return {"screen": proc.get("screen"), "timestamp": proc.get("timestamp"), "elements": slim, "_debug": d2}
-
-# -------------------- endpoints --------------------
-@app.get("/healthz")
-async def healthz():
-    return {"status": "ok", "controller": APP_NAME, "version": APP_VER}
-
-@app.get("/config")
-async def config():
-    return {
-        "status": "ok",
-        "sut_state_url": SUT_STATE_URL,
-        "sut_timeout_sec": SUT_TIMEOUT_SEC,
-        "strip_fields": sorted(STRIP_FIELDS),
-        "dedupe_mode": f"{DEDUPE_KEY_MODE}+ct_rank+canon",
-        "include_duplicates_for_llm": INCLUDE_DUPLICATES_FOR_LLM,
-        # OCR
-        "ocr_enabled": OCR_ENABLED,
-        "ocr_sync_budget": OCR_SYNC_BUDGET,
-        "tesseract_lang": TESSERACT_LANG,
-        "tessdata_prefix": TESSDATA_PREFIX,
-        "ocr_queue_size": len(app.state.ocr_queue),
-        "ocr_max_area_frac": OCR_MAX_AREA_FRAC,
-        "ocr_min_char": OCR_MIN_CHAR,
-        "ocr_max_char": OCR_MAX_CHAR,
-        "ocr_min_conf_empty": OCR_MIN_CONF_EMPTY,
-        "ocr_min_conf_dup": OCR_MIN_CONF_DUP,
-        "ocr_min_conf_short": OCR_MIN_CONF_SHORT,
-        "accept_lowconf_min": OCR_ACCEPT_LOWCONF_MIN,
-        "rect_pad_px": RECT_PAD_PX,
-        "use_hard_filters": OCR_USE_HARD_FILTERS,
-        "thin_line_hard_px": THIN_LINE_HARD_PX,
-        "thin_line_soft_w": THIN_LINE_SOFT_W,
-        "thin_line_soft_h": THIN_LINE_SOFT_H,
-        "try_invert": TRY_INVERT,
-        "fallback_lang": ("" if OCR_FAST_MODE else FALLBACK_LANG),
-        "ocr_fast_mode": OCR_FAST_MODE,
-        "ocr_cooldown_sec": OCR_COOLDOWN_SEC,
-        "ocr_parallel": _PAR,
-        "ocr_char_whitelist": OCR_CHAR_WHITELIST,
-        "ocr_strict_whitelist": OCR_STRICT_WHITELIST,
-        # YOLO icons
-        "icon_yolo_enabled": ICON_YOLO_ENABLED,
-        "icon_yolo_available": _YOLO_AVAILABLE,
-        "icon_yolo_model_path": ICON_YOLO_MODEL_PATH,
-        "icon_yolo_model_loaded": _YOLO_MODEL is not None,
-        "icon_yolo_conf": ICON_YOLO_CONF,
-        "icon_yolo_iou": ICON_YOLO_IOU,
-        "icon_match_min_iou": ICON_MATCH_MIN_IOU,
-        "icon_only_on_empty": ICON_ONLY_ON_EMPTY,
-        "icon_detect_whole_screen": ICON_DETECT_WHOLE_SCREEN,
-        "icon_box_min_w": ICON_BOX_MIN_W,
-        "icon_box_min_h": ICON_BOX_MIN_H,
-        "icon_box_max_w": ICON_BOX_MAX_W,
-        "icon_box_max_h": ICON_BOX_MAX_H,
-        "icon_class_overrides": ICON_CLASS_OVERRIDES,
-        "icon_name_semantics": ICON_NAME_SEMANTICS,
-        # --- ODS ---
-        "ods_url": ODS_URL,
-        "ods_timeout_sec": ODS_TIMEOUT_SEC,
-        "ods_last_error": app.state.last_ods_error,
-    }
-
-@app.get("/debug/last-ods-error")
-async def debug_last_ods_error():
-    return {"status": "ok", "last": app.state.last_ods_error}
-
-@app.get("/debug/last-sut-error")
-async def debug_last_sut_error():
-    return {"status": "ok", "last": app.state.last_sut_error}
-
-@app.get("/debug/ping-sut")
-async def debug_ping_sut():
+async def _fetch_raw_state() -> Dict[str, Any]:
+    """Fetch raw state from SUT"""
     try:
         async with httpx.AsyncClient(timeout=_httpx_timeout(), trust_env=False) as client:
             r = await client.post(SUT_STATE_URL, json={})
-            ok = r.status_code
-        return {"status": "ok", "http_status": ok}
+            r.raise_for_status()
+            data = r.json()
+            app.state.last_raw_state = data
+            app.state.last_raw_ts = time.time()
+            app.state.last_sut_error = None
+            return data
     except Exception as e:
-        app.state.last_sut_error = {"type": type(e).__name__, "url": SUT_STATE_URL, "message": str(e)}
-        raise HTTPException(status_code=502, detail=f"ping failed: {app.state.last_sut_error.get('message','')}")
+        app.state.last_sut_error = {"msg": str(e), "url": SUT_STATE_URL}
+        raise HTTPException(502, f"SUT Error: {e}")
+
+async def _call_ods_with_base64(b64: str) -> Dict[str, Any]:
+    """Send base64 screenshot to ODS"""
+    if not ODS_URL: return {}
+    try:
+        async with httpx.AsyncClient(timeout=_ods_timeout(), trust_env=False, follow_redirects=True) as client:
+            r = await client.post(ODS_URL, json={"base64_image": b64})
+            r.raise_for_status()
+            return r.json()
+    except Exception as e:
+        app.state.last_ods_error = {"msg": str(e), "url": ODS_URL}
+        raise
+
+def _elements_from_ods_response(ods_raw: dict, screen: dict) -> list[dict]:
+    """Convert ODS response to element list"""
+    w, h = screen.get("w", 1920), screen.get("h", 1080)
+    elements = []
+    
+    for item in ods_raw.get("parsed_content_list", []):
+        if item.get("type") not in ("text", "icon"): continue
+        bbox = item.get("bbox", [])
+        if len(bbox) != 4: continue
+        
+        # ODS returns normalized bbox [0-1000]
+        x1, y1, x2, y2 = bbox
+        cx = (x1 + x2) / 2.0 * w
+        cy = (y1 + y2) / 2.0 * h
+        
+        elements.append({
+            "name": item.get("content") or "",
+            "type": item.get("type"),
+            "center": {"x": float(cx), "y": float(cy)}
+        })
+    return elements
+
+# ============================================================================
+# 6. FORMATTING & FINAL LOGIC
+# ============================================================================
+
+def _format_compact_text_for_llm(elements: List[Dict[str, Any]]) -> str:
+    """
+    Qwen/Llama Dostu Format: (x,y) [Type] Name
+    Koordinatları başa alarak modelin önce konumu algılamasını sağlar.
+    """
+    # Başlığı yeni formata uygun hale getiriyoruz
+    lines = ["Format: (x,y) [Type] Name"]
+    lines.append("-" * 40)
+    
+    for i, el in enumerate(elements):
+        c = el.get("center", {})
+        cx, cy = int(c.get("x", 0)), int(c.get("y", 0))
+        
+        # Tipi kısalt ve normalize et
+        etype = el.get("type", "ui").replace("statictext", "text").replace("imageview", "icon")
+        
+        # İsmi temizle ve kısalt
+        final_name = el.get("name", "").strip().replace("\n", " ")
+        if len(final_name) > 60: 
+            final_name = final_name[:57] + "..."
+            
+        if not final_name: 
+            continue
+
+        # --- DEĞİŞİKLİK BURADA ---
+        # Eski: line = f"{etype} | {cx},{cy} | {final_name}"
+        # Yeni: (x,y) [type] name
+        line = f"({cx},{cy}) [{etype}] {final_name}"
+        lines.append(line)
+        
+    return "\n".join(lines)
+
+def _dedupe_by_name_smart(elements: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict]:
+    """
+    Unique Key: (Name, X, Y) - Prevents deleting same-name items at different locations.
+    """
+    TYPE_PRIORITY = {"button": 1, "input": 2, "checkbox": 3, "list": 4, "text": 10, "icon": 11, "container": 20, "unknown": 99}
+    unique_map = {}
+    
+    for el in elements:
+        name = (el.get("name") or "").strip()
+        if not name: continue
+        
+        c = el.get("center", {})
+        try: cx, cy = int(c.get("x", 0)), int(c.get("y", 0))
+        except: continue
+        
+        unique_key = (name, cx, cy)
+        el_type = _add_element_type_info(el)
+        el_prio = TYPE_PRIORITY.get(el_type, 99)
+        
+        if unique_key not in unique_map:
+            unique_map[unique_key] = (el_prio, el)
+        else:
+            curr_prio, _ = unique_map[unique_key]
+            if el_prio < curr_prio:
+                unique_map[unique_key] = (el_prio, el)
+                
+    result = [val[1] for val in unique_map.values()]
+    return result, {"dedupe_count": len(elements) - len(result)}
+
+def _finalize_elements_for_llm(elements: List[Dict[str, Any]], screen: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Creates hybrid output: Structured list + Text block."""
+    temp_elements = []
+    BLACKLIST = {"rectangle", "line", "m0,0l9,5", "rounded rectangle", "group", "path", "0,0"}
+    
+    for el in elements or []:
+        # Selection: Name > OCR > Icon
+        original_name = (el.get("name") or "").strip()
+        ocr_name = (el.get("name_ocr") or "").strip()
+        icon_name = _normalized_name_from_icon(el)
+        
+        final_name = original_name or ocr_name or icon_name
+        
+        if not final_name: continue
+        if final_name.lower() in BLACKLIST: continue
+        
+        rect = _rect_from_element(el, screen)
+        center = _center_from_element(el, rect)
+        if not center: continue
+        
+        temp_el = {
+            "name": final_name,
+            "center": center,
+            "type": _add_element_type_info(el)
+        }
+        temp_elements.append(temp_el)
+    
+    structured_list = []
+    for el in temp_elements:
+        structured_list.append({
+            "name": el["name"],
+            "type": el["type"],
+            "center": el["center"]
+        })
+
+    compact_view = _format_compact_text_for_llm(structured_list)
+
+    return {
+        "elements": structured_list,
+        "llm_view": compact_view,
+        "screen": screen,
+        "count": len(structured_list)
+    }
+
+# ============================================================================
+# 7. API ENDPOINTS
+# ============================================================================
+
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok", "controller": APP_NAME, "version": APP_VER}
 
 @app.post("/state/raw")
 async def state_raw():
     return await _fetch_raw_state()
 
-@app.post("/state/filtered")
-async def state_filtered():
-    raw = await _fetch_raw_state()
-    return _filter_state_for_inspect(raw)
-
 @app.post("/state/for-llm")
 async def state_for_llm():
+    """Standard SUT path (WinDriver) with Enrichment & Dedupe"""
     raw = await _fetch_raw_state()
-    return _filter_state_for_llm(raw)
+    proc = raw
+    elems = proc.get("elements") or []
+    screen = proc.get("screen") or {}
+    
+    dbg = {}
+    # Enrichment
+    _enrich_with_ocr_if_possible(proc, elems, dbg)
+    _enrich_with_icons_yolo(proc, elems, dbg)
+    
+    # Dedupe
+    if not INCLUDE_DUPLICATES_FOR_LLM:
+        elems, d = _dedupe_by_name_smart(elems)
+        dbg.update(d)
+        
+    res = _finalize_elements_for_llm(elems, screen)
+    res["_debug"] = dbg
+    return res
 
 @app.post("/state/from-ods")
 async def state_from_ods():
-    """
-    SUT'tan raw state alır, screenshot base64'ünü ODS'e gönderir ve
-    dönen parsed_content_list kullanılarak LLM için minimal state üretir.
-
-    Eğer:
-    - ODS_URL boşsa,
-    - screenshot yoksa,
-    - ODS timeout / hata verirse,
-
-    sessizce _filter_state_for_llm'e fallback yapar.
-    """
+    """ODS path (Visual Model) with Error Handling & Dedupe"""
     raw = await _fetch_raw_state()
-
-    # ODS ayarlı değilse direkt normal pipeline
+    
     if not ODS_URL:
-        return _filter_state_for_llm(raw)
+        raise HTTPException(501, "ODS_URL not set")
 
     b64 = _extract_screenshot_b64(raw)
     if not b64:
-        # screenshot yoksa ODS çalıştırmayalım
-        return _filter_state_for_llm(raw)
+        raise HTTPException(400, "No screenshot in SUT state")
 
     try:
         ods_data = await _call_ods_with_base64(b64)
-        if not isinstance(ods_data, dict) or not ods_data.get("parsed_content_list"):
-            # ODS boş veya beklenmedik cevap -> fallback
-            return _filter_state_for_llm(raw)
+        if not ods_data or not ods_data.get("parsed_content_list"):
+             raise HTTPException(502, "ODS returned empty data")
+            
+        screen = raw.get("screen") or {"w":1920, "h":1080}
+        ods_elements = _elements_from_ods_response(ods_data, screen)
+        
+        # Enrichment (optional for ODS)
+        # _enrich_with_icons_yolo(raw, ods_elements, {})
 
-        return _filter_state_from_ods(raw, ods_data)
-    except Exception:
-        # Hata detayını _call_ods_with_base64 zaten app.state.last_ods_error'a yazıyor.
-        # Burada sadece ODS yokmuş gibi davranıyoruz.
-        return _filter_state_for_llm(raw)
+        if not INCLUDE_DUPLICATES_FOR_LLM:
+             ods_elements, _ = _dedupe_by_name_smart(ods_elements)
 
-
-@app.post("/debug/ods-state")
-async def debug_ods_state():
-    """
-    SUT'tan raw state al,
-    screenshot'ı ODS'e gönder,
-    ODS'in ham cevabını ve sayıları döndür.
-    """
-    raw = await _fetch_raw_state()
-    b64 = _extract_screenshot_b64(raw)
-    if not b64:
-        raise HTTPException(status_code=400, detail="no screenshot in state")
-
-    try:
-        ods = await _call_ods_with_base64(b64)
+        return _finalize_elements_for_llm(ods_elements, screen)
+        
     except Exception as e:
-        # _call_ods_with_base64 zaten app.state.last_ods_error dolduruyor
-        raise HTTPException(
-            status_code=502,
-            detail={"message": "ODS call failed", "last_error": app.state.last_ods_error},
-        )
+        print(f"ODS Critical Error: {e}")
+        raise HTTPException(502, f"ODS Service Failed: {str(e)}")
 
+@app.get("/config")
+async def config():
     return {
         "status": "ok",
-        "sut_screen": raw.get("screen"),
-        "sut_elements_count": len(raw.get("elements") or []),
-        "ods_keys": list(ods.keys()),
-        "ods_latency": ods.get("latency"),
-        "ods_parsed_count": len(ods.get("parsed_content_list") or []),
-        "ods_raw": ods,  # istersen burada da kısaltabilirsin
+        "sut_url": SUT_STATE_URL,
+        "ods_url": ODS_URL,
+        "ocr_enabled": OCR_ENABLED,
+        "yolo_enabled": ICON_YOLO_ENABLED,
+        "dedupe_enabled": not INCLUDE_DUPLICATES_FOR_LLM
     }
 
-@app.post("/state/fallback-full")
-async def state_fallback_full():
-    return app.state.last_raw_state or await _fetch_raw_state()
+@app.post("/state/filtered")
+async def state_filtered():
+    raw = await _fetch_raw_state()
+    return raw
 
-# ---- OCR queue debug ----
-@app.get("/debug/ocr-queue")
-async def debug_ocr_queue(limit: int = 50):
-    data = app.state.ocr_queue[-limit:]
-    return {"status": "ok", "count": len(data), "total": len(app.state.ocr_queue), "items": data}
-
-@app.post("/debug/ocr-queue/clear")
-async def debug_ocr_queue_clear():
-    n = len(app.state.ocr_queue)
-    app.state.ocr_queue.clear()
-    return {"status": "ok", "cleared": n}
-
-# ---- YOLO debug ----
-@app.get("/debug/icon-yolo")
-async def debug_icon_yolo():
-    _load_yolo_once()
-    return {
-        "status": "ok",
-        "available": _YOLO_AVAILABLE,
-        "enabled": ICON_YOLO_ENABLED,
-        "model_path": ICON_YOLO_MODEL_PATH,
-        "loaded": _YOLO_MODEL is not None,
-        "class_names": _YOLO_CLASS_NAMES,
-        "icon_name_semantics": ICON_NAME_SEMANTICS,
-    }
-
-# ---- main ----
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("controller_service:app", host="0.0.0.0", port=int(os.getenv("CONTROLLER_PORT", "18800")), reload=True)
+    port = int(os.getenv("CONTROLLER_PORT", "18800"))
+    uvicorn.run("controller_service:app", host="0.0.0.0", port=port, reload=True)

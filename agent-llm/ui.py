@@ -180,7 +180,7 @@ with col2:
                     for s in st.session_state.test_steps
                 ],
                 "temperature": 0.1,
-                "max_attempts": 4,
+                "max_attempts": 2,
             }
             resp = requests.post(RUN_URL, json=payload, timeout=120)
             if resp.ok:
@@ -192,3 +192,4 @@ with col2:
                 st.error(f"/run HTTP {resp.status_code}: {resp.text[:500]}")
         except requests.RequestException as e:
             st.error(f"Backend'e bağlanılamadı: {e}")
+# TO DO: test step ekleme çıkarma düzenleme, testi kaydetme, Sonuç gösterme 
