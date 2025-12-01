@@ -51,8 +51,8 @@ def parse_arguments():
                         help='Device to run the model: cuda | cpu')
 
     # Not: orijinalde BOX_TRESHOLD yazımı vardı; sistemde öyle bekleniyorsa dokunmayalım
-    parser.add_argument('--BOX_TRESHOLD', type=float, default=0.05,
-                        help='Threshold for box detection')
+    parser.add_argument('--BOX_TRESHOLD', type=float, default=0.01, 
+                        help='Threshold for box detection (Lowered for v2.0)')
 
     parser.add_argument('--host', type=str, default='127.0.0.1', help='Host for the API')
     parser.add_argument('--port', type=int, default=8000, help='Port for the API')
