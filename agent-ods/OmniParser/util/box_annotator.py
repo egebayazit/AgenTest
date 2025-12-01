@@ -128,12 +128,6 @@ class BoxAnnotator:
 
                 text_background_x2 = x1 + 2 * self.text_padding + text_width
                 text_background_y2 = y1
-                # text_x = x1 - self.text_padding - text_width
-                # text_y = y1 + self.text_padding + text_height
-                # text_background_x1 = x1 - 2 * self.text_padding - text_width
-                # text_background_y1 = y1
-                # text_background_x2 = x1
-                # text_background_y2 = y1 + 2 * self.text_padding + text_height
             else:
                 text_x, text_y, text_background_x1, text_background_y1, text_background_x2, text_background_y2 = get_optimal_label_pos(self.text_padding, text_width, text_height, x1, y1, x2, y2, detections, image_size)
 
@@ -144,7 +138,7 @@ class BoxAnnotator:
                 color=color.as_bgr(),
                 thickness=cv2.FILLED,
             )
-            # import pdb; pdb.set_trace()
+            
             box_color = color.as_rgb()
             luminance = 0.299 * box_color[0] + 0.587 * box_color[1] + 0.114 * box_color[2]
             text_color = (0,0,0) if luminance > 160 else (255,255,255)
@@ -154,7 +148,6 @@ class BoxAnnotator:
                 org=(text_x, text_y),
                 fontFace=font,
                 fontScale=self.text_scale,
-                # color=self.text_color.as_rgb(),
                 color=text_color,
                 thickness=self.text_thickness,
                 lineType=cv2.LINE_AA,
@@ -163,7 +156,7 @@ class BoxAnnotator:
     
 
 def box_area(box):
-        return (box[2] - box[0]) * (box[3] - box[1])
+    return (box[2] - box[0]) * (box[3] - box[1])
 
 def intersection_area(box1, box2):
     x1 = max(box1[0], box2[0])
