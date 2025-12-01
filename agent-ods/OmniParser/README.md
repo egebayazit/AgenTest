@@ -86,17 +86,35 @@ Başka bir PowerShell penceresinden test etmek için:
 
 PowerShell
 
-$IMG  = "imgs/test.jpg" # Test edilecek resim yolu
-$URL  = "[http://127.0.0.1:8000/parse/](http://127.0.0.1:8000/parse/)"
+# 1. Ayarlar
+$IMG  = "imgs/test.jpg" # Resim yolunun doğru olduğundan emin ol
+$URL  = "http://127.0.0.1:8000/parse/"
+$OUT_FILE = "v2_results.json"
 
-# Resmi Base64'e çevir
+# 2. Resmi Base64'e çevir
+Write-Host "Resim okunuyor..." -ForegroundColor Cyan
 $bytes = [System.IO.File]::ReadAllBytes($IMG)
 $b64   = [System.Convert]::ToBase64String($bytes)
 
-# İsteği Gönder
+# 3. İsteği Gönder
+Write-Host "ODS Sunucusuna istek atılıyor..." -ForegroundColor Cyan
 $body = @{ base64_image = $b64 } | ConvertTo-Json -Compress
-$r = Invoke-RestMethod -Uri $URL -Method POST -ContentType "application/json" -Body $body
 
-# Sonucu Görüntüle
-Write-Host "Latency: $($r.latency)"
+# Süre tutalım
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+$r = Invoke-RestMethod -Uri $URL -Method POST -ContentType "application/json" -Body $body
+$sw.Stop()
+
+# 4. Sonucu Görüntüle ve Kaydet
+Write-Host "✅ İŞLEM TAMAMLANDI!" -ForegroundColor Green
+Write-Host "Latency (Server): $($r.latency) sn"
+Write-Host "Toplam Süre: $($sw.Elapsed.TotalSeconds) sn"
+Write-Host "Tespit Edilen Öğe: $($r.parsed_content_list.Count)"
+
+# İlk 5 öğeyi ekrana bas
+Write-Host "`n--- İlk 5 Öğe ---" -ForegroundColor Yellow
 $r.parsed_content_list | Select-Object -First 5
+
+# TÜM SONUCU DOSYAYA KAYDET 
+$r.parsed_content_list | ConvertTo-Json -Depth 10 | Out-File $OUT_FILE -Encoding UTF8
+Write-Host "`n📄 Tüm sonuçlar '$OUT_FILE' dosyasına kaydedildi." -ForegroundColor Green
