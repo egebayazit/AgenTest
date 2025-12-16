@@ -1,5 +1,10 @@
-﻿# llm_backend.py v2.1
-# Complete rewrite with modular validation system + semantic filtering
+﻿# llm_backend.py v2.7 - Simplified Dialog Validation + DEBUG LOGGING
+# KEY CHANGES from v2.4:
+# 1. Opening actions ("opens", "loads") SKIP dialog bounds entirely  
+# 3. Selection = any UI change (no coordinate requirement)
+# 4. Removed complex dialog detection logic
+# 5. Simplified validation - focus on UI change detection
+# 6. ADDED: Comprehensive debug logging for LLM input/output
 
 from __future__ import annotations
 
@@ -20,6 +25,12 @@ from semantic_filter import SemanticStateFilter
 
 logger = logging.getLogger(__name__)
 
+try:
+    from llama_cpp import Llama
+    LLAMACPP_AVAILABLE = True
+except ImportError:
+    LLAMACPP_AVAILABLE = False
+
 # ============================================================================
 # SYSTEM PROMPT
 # ============================================================================
@@ -28,210 +39,123 @@ SYSTEM_PROMPT = """You are a Windows UI automation expert. Execute test steps us
 
 OUTPUT: Valid JSON only. No markdown, no explanations.
 
-TASK: Parse the test step, find the correct element, and click it.
-
 CURRENT_STATE FORMAT:
 ID | Name | Type | (x,y)
 ------------------------------------------------------------
 1 | Save Settings | text | (10,20)
-2 | [Icon] | icon | (100,20)
+2 | Trash Bin | icon | (100,200)
 
-PARSING TEST STEP:
-Extract these components:
-1. CONTROL TYPE: What to click (checkbox, button, icon, toggle, dropdown)
-2. ANCHOR NAME: Reference element name (often after "next to", "in", "of")
 
-SEARCH STRATEGY:
+CORE PRINCIPLE:
+1. SPATIAL IS KING: If user says "next to", "near", "right of" -> PROXIMITY is PRIMARY.
+   - Find Anchor -> Find closest element in direction -> Click that (Ignore name if needed).
+2. If NO spatial words -> Use exact NAME match.
 
-STEP 1: Find Anchor Element
-- Search Name column for ANCHOR text
-- If found: Note ID, Type, and (x,y)
-- If not found: Return empty steps
-
-STEP 2: Determine if Neighbor Search Needed
-Check if CONTROL TYPE is different from ANCHOR Type:
-
-A. CONTROL TYPE mentions: checkbox, toggle, switch, icon, dropdown, arrow
-   AND
-   ANCHOR Type = text OR Name doesn't match CONTROL TYPE
-   → NEIGHBOR SEARCH REQUIRED
-
-B. CONTROL TYPE matches ANCHOR Name directly
-   → CLICK ANCHOR DIRECTLY
-
-STEP 3: Neighbor Search (if required)
-Scan elements with:
-- Same Y coordinate (±15 pixels)
-- Within 300 pixels on X axis
-- Type = icon (most controls are icons)
-- ID different from Anchor ID
-
-Neighbor Priority (check in order):
-1. Name contains CONTROL TYPE keyword:
-   - checkbox → "check", "tick", "mark", "box"
-   - toggle → "toggle", "switch", "on", "off"
-   - dropdown → "drop", "arrow", "down", "menu"
-   - icon → any icon type
-   
-2. Closest to anchor (prefer <200px distance)
-
-3. If multiple matches: Pick closest on X axis
-
-STEP 4: Final Click Target
-- If neighbor found → Click neighbor coordinates
-- If no neighbor → Click anchor (fallback)
+ACTION RULES (STRICT):
+- ACTION_SEQUENCE_ALLOWED: If a test_step requires multiple actions (e.g., click + type), produce all actions in correct logical order.
+- If note_to_llm specifies an order (e.g. 'click before typing'), follow that strictly.
+1. 'click': Requires "target": {"point": {"x":..., "y":...}}.
+   - Optional: "modifiers": ["ctrl", "shift"] for multi-select.
+   - Optional: "button": "right" for context menus.
+2. 'type': Use for text/number entry.
+   - Required: "text": "string".
+   - Optional: "enter": true (to submit).
+3. 'key_combo': Use for shortcuts ONLY.
+   - Format: "combo": ["ctrl", "c"] or ["enter"] or ["tab"].
+4. 'drag': Move element from A to B.
+   - Required: "from": {"x":..., "y":...}, "to": {"x":..., "y":...}.
+5. 'scroll': Scroll list/map.
+   - Required: "delta": integer (Positive=Up, Negative=Down).
+   - Optional: "at": {"x":..., "y":...} (Mouse position during scroll).
+6. 'wait': Pause execution.
+   - Required: "ms": integer (milliseconds).
 
 EXAMPLES:
 
-Example 1: Checkbox with Text Anchor
-─────────────────────────────────────
-Input:
-  test_step: "Click 'checkbox' next to Main Rule Control"
-  current_state:
-    13 | Main Rule Control | text | (76,368)
-    14 | checkmark | icon | (283,368)
-    15 | Other Element | text | (76,400)
-
-Analysis:
-  1. CONTROL TYPE = "checkbox", ANCHOR = "Main Rule Control"
-  2. Find anchor: ID 13 found
-  3. Anchor Type = text ≠ checkbox → Neighbor search needed
-  4. Search Y=368±15 (353 to 383):
-     - ID 14: Y=368✓, Type=icon✓, Name has "check"✓, Distance=207px✓
-  5. Neighbor found! Click ID 14
-
+Input: Click dropdown next to 'Force Id' (Anchor 'Force Id' at 100,100. 'Move Down' icon at 150,100)
 Output:
 {
   "action_id": "step_1",
   "coords_space": "physical",
-  "steps": [{"type":"click","button":"left","click_count":1,"target":{"point":{"x":283,"y":368}}}],
-  "reasoning": "Anchor 'Main Rule Control' at ID 13 (76,368). Control type 'checkbox' needs neighbor. Found checkmark icon at ID 14 (283,368) on same row. Clicking neighbor."
+  "steps": [{"type":"click","button":"left","click_count":1,"target":{"point":{"x":150,"y":100}}}],
+  "reasoning": "Found anchor 'Force Id'. Closest dropdown-like element is 'Move Down' at (150,100)."
 }
+EXAMPLES:
 
-Example 2: Direct Button Click
-───────────────────────────────
-Input:
-  test_step: "Click 'Load Scenario' button"
-  current_state:
-    26 | Load Scenario | button | (1561,797)
-    27 | Cancel | button | (1650,797)
-
-Analysis:
-  1. CONTROL TYPE = "button", ANCHOR = "Load Scenario"
-  2. Find anchor: ID 26 found
-  3. Anchor Type = button = CONTROL TYPE → Direct click
-  4. No neighbor search needed
-
-Output:
+EXAMPLE 1 — Click (spatial):
 {
   "action_id": "step_1",
   "coords_space": "physical",
-  "steps": [{"type":"click","button":"left","click_count":1,"target":{"point":{"x":1561,"y":797}}}],
-  "reasoning": "Found 'Load Scenario' button at ID 26 (1561,797). Direct match, no neighbor needed. Clicking anchor."
+  "steps": [
+    {"type":"click","button":"left","click_count":1,
+     "target":{"point":{"x":150,"y":100}}}
+  ],
+  "reasoning":"Anchor located; nearest matching element clicked."
 }
 
-Example 3: Toggle with No Neighbor
-───────────────────────────────────
-Input:
-  test_step: "Click 'toggle' next to Settings"
-  current_state:
-    5 | Settings | text | (50,100)
-    6 | Profile | text | (50,130)
-
-Analysis:
-  1. CONTROL TYPE = "toggle", ANCHOR = "Settings"
-  2. Find anchor: ID 5 found
-  3. Anchor Type = text ≠ toggle → Neighbor search needed
-  4. Search Y=100±15 (85 to 115):
-     - ID 6: Y=130 (outside range)
-     - No neighbors found
-  5. Fallback: Click anchor
-
-Output:
+EXAMPLE 2 — Type:
 {
-  "action_id": "step_1",
+  "action_id": "step_2",
   "coords_space": "physical",
-  "steps": [{"type":"click","button":"left","click_count":1,"target":{"point":{"x":50,"y":100}}}],
-  "reasoning": "Anchor 'Settings' at ID 5 (50,100). Control type 'toggle' needs neighbor but none found in same row. Fallback: clicking anchor."
+  "steps": [
+    {"type":"type","text":"Hello","enter":true}
+  ],
+  "reasoning":"Typed text and submitted with Enter."
 }
 
-Example 4: Dropdown Near Text
-──────────────────────────────
-Input:
-  test_step: "Click dropdown next to Country"
-  current_state:
-    8 | Country | text | (200,300)
-    9 | arrow down | icon | (350,302)
-    10 | [Separator] | icon | (360,302)
-
-Analysis:
-  1. CONTROL TYPE = "dropdown", ANCHOR = "Country"
-  2. Find anchor: ID 8 found
-  3. Anchor Type = text ≠ dropdown → Neighbor search needed
-  4. Search Y=300±15 (285 to 315):
-     - ID 9: Y=302✓, Type=icon✓, Name has "arrow"✓, Distance=150px✓
-     - ID 10: Y=302✓, Type=icon✓, Name generic, Distance=160px
-  5. ID 9 better match (has "arrow" keyword)
-
-Output:
+EXAMPLE 3 — Drag:
 {
-  "action_id": "step_1",
-  "coords_space": "physical",
-  "steps": [{"type":"click","button":"left","click_count":1,"target":{"point":{"x":350,"y":302}}}],
-  "reasoning": "Anchor 'Country' at ID 8 (200,300). Control type 'dropdown' needs neighbor. Found 'arrow down' icon at ID 9 (350,302) on same row. Clicking neighbor."
+  "action_id":"step_3",
+  "coords_space":"physical",
+  "steps":[
+    {"type":"drag","from":{"x":50,"y":50},
+     "to":{"x":500,"y":500},"button":"left"}
+  ],
+  "reasoning":"Dragged source to target coordinates."
 }
 
-Example 5: Element Not Found
-─────────────────────────────
-Input:
-  test_step: "Click 'checkbox' next to Advanced Options"
-  current_state:
-    1 | Settings | text | (50,50)
-    2 | Profile | text | (50,80)
-
-Analysis:
-  1. CONTROL TYPE = "checkbox", ANCHOR = "Advanced Options"
-  2. Find anchor: NOT FOUND
-  3. Return empty steps
-
-Output:
+EXAMPLE 4 — Scroll:
 {
-  "action_id": "step_1",
-  "coords_space": "physical",
-  "steps": [],
-  "reasoning": "Anchor 'Advanced Options' not found in current_state. Cannot proceed."
+  "action_id":"step_4",
+  "coords_space":"physical",
+  "steps":[
+    {"type":"scroll","delta":-120,"at":{"x":300,"y":300}}
+  ],
+  "reasoning":"Scrolling downward."
 }
 
-CONTROL TYPE KEYWORDS (for neighbor matching):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-checkbox  → check, tick, mark, box, select
-toggle    → toggle, switch, on, off, enable
-dropdown  → drop, arrow, down, expand, menu, combo
-icon      → (any icon type element)
-button    → (usually direct match, no neighbor needed)
+EXAMPLE 5 — Key Combo (CTRL+C):
+{
+  "action_id":"step_5",
+  "coords_space":"physical",
+  "steps":[
+    {"type":"key_combo","combo":["ctrl","c"]}
+  ],
+  "reasoning":"Triggered copy shortcut."
+}
 
-REASONING FORMAT (mandatory):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Must include:
-1. Anchor element: Name, ID, coordinates
-2. Control type requested
-3. Neighbor search result (if applicable)
-4. Final decision: Which ID clicking and why
+EXAMPLE 6 — Key Combo (ALT+F4):
+{
+  "action_id":"step_6",
+  "coords_space":"physical",
+  "steps":[
+    {"type":"key_combo","combo":["alt","f4"]}
+  ],
+  "reasoning":"Triggered window close shortcut."
+}
 
-CRITICAL RULES:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. Neighbor search range: Y ±15px, X ≤300px
-2. Neighbor must be Type=icon in most cases
-3. If neighbor found, MUST click neighbor not anchor
-4. If no neighbor found, fallback to anchor
-5. Always explain neighbor search in reasoning
-6. Empty steps only if anchor not found
+EXAMPLE 7 — Key Combo (ENTER):
+{
+  "action_id":"step_7",
+  "coords_space":"physical",
+  "steps":[
+    {"type":"key_combo","combo":["enter"]}
+  ],
+  "reasoning":"Pressed Enter key."
+}
+
 """
 
-
-# ============================================================================
-# JSON SCHEMA
-# ============================================================================
 
 AGEN_TEST_PLAN_SCHEMA: Dict[str, Any] = {
     "type": "object",
@@ -248,143 +172,33 @@ AGEN_TEST_PLAN_SCHEMA: Dict[str, Any] = {
                 "type": "object",
                 "additionalProperties": False,
                 "oneOf": [
-                    {  # CLICK
-                        "properties": {
-                            "type": {"const": "click"},
-                            "button": {"enum": ["left", "right", "middle"]},
-                            "click_count": {"type": "integer", "minimum": 1, "maximum": 2},
-                            "modifiers": {
-                                "type": "array",
-                                "items": {"enum": ["ctrl", "shift", "alt", "win"]},
-                                "uniqueItems": True,
-                            },
-                            "target": {
-                                "type": "object",
-                                "properties": {
-                                    "point": {
-                                        "type": "object",
-                                        "required": ["x", "y"],
-                                        "properties": {
-                                            "x": {"type": "number"},
-                                            "y": {"type": "number"},
-                                        },
-                                        "additionalProperties": False,
-                                    }
-                                },
-                                "required": ["point"],
-                                "additionalProperties": False,
-                            },
-                        },
-                        "required": ["type", "button", "click_count", "target"],
-                    },
-                    {  # TYPE
-                        "properties": {
-                            "type": {"const": "type"},
-                            "text": {"type": "string"},
-                            "delay_ms": {"type": "integer", "minimum": 0},
-                            "enter": {"type": "boolean"},
-                        },
-                        "required": ["type", "text"],
-                    },
-                    {  # KEY_COMBO
-                        "properties": {
-                            "type": {"const": "key_combo"},
-                            "combo": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "minItems": 1,
-                            },
-                        },
-                        "required": ["type", "combo"],
-                        "additionalProperties": False,
-                    },
-                    {  # WAIT
-                        "properties": {
-                            "type": {"const": "wait"},
-                            "ms": {"type": "integer", "minimum": 0},
-                        },
-                        "required": ["type", "ms"],
-                    },
-                    {  # DRAG
-                        "properties": {
-                            "type": {"const": "drag"},
-                            "from": {
-                                "type": "object",
-                                "required": ["x", "y"],
-                                "properties": {
-                                    "x": {"type": "number"},
-                                    "y": {"type": "number"},
-                                },
-                            },
-                            "to": {
-                                "type": "object",
-                                "required": ["x", "y"],
-                                "properties": {
-                                    "x": {"type": "number"},
-                                    "y": {"type": "number"},
-                                },
-                            },
-                            "button": {"enum": ["left", "right", "middle"]},
-                            "hold_ms": {"type": "integer", "minimum": 0},
-                        },
-                        "required": ["type", "from", "to"],
-                    },
-                    {  # SCROLL
-                        "properties": {
-                            "type": {"const": "scroll"},
-                            "delta": {"type": "integer"},
-                            "horizontal": {"type": "boolean"},
-                            "at": {
-                                "type": "object",
-                                "required": ["x", "y"],
-                                "properties": {
-                                    "x": {"type": "number"},
-                                    "y": {"type": "number"},
-                                },
-                            },
-                        },
-                        "required": ["type", "delta"],
-                    },
+                    {"properties": {"type": {"const": "click"}, "button": {"enum": ["left", "right", "middle"]}, "click_count": {"type": "integer", "minimum": 1, "maximum": 2}, "modifiers": {"type": "array", "items": {"enum": ["ctrl", "shift", "alt", "win"]}}, "target": {"type": "object", "properties": {"point": {"type": "object", "required": ["x", "y"], "properties": {"x": {"type": "number"}, "y": {"type": "number"}}}}, "required": ["point"]}}, "required": ["type", "button", "click_count", "target"]},
+                    {"properties": {"type": {"const": "type"}, "text": {"type": "string"}, "delay_ms": {"type": "integer"}, "enter": {"type": "boolean"}}, "required": ["type", "text"]},
+                    {"properties": {"type": {"const": "key_combo"}, "combo": {"type": "array", "items": {"type": "string"}, "minItems": 1}}, "required": ["type", "combo"]},
+                    {"properties": {"type": {"const": "wait"}, "ms": {"type": "integer"}}, "required": ["type", "ms"]},
+                    {"properties": {"type": {"const": "drag"}, "from": {"type": "object", "required": ["x", "y"]}, "to": {"type": "object", "required": ["x", "y"]}, "button": {"enum": ["left", "right", "middle"]}}, "required": ["type", "from", "to"]},
+                    {"properties": {"type": {"const": "scroll"}, "delta": {"type": "integer"}, "horizontal": {"type": "boolean"}, "at": {"type": "object", "required": ["x", "y"]}}, "required": ["type", "delta"]},
                 ],
             },
         },
     },
 }
 
-# ============================================================================
-# EXCEPTIONS
-# ============================================================================
+# Exceptions
+class BackendError(Exception): pass
+class PlanParseError(BackendError): pass
+class SUTCommunicationError(BackendError): pass
+class LLMCommunicationError(BackendError): pass
 
-class BackendError(Exception):
-    """Base exception for backend errors"""
-    pass
-
-class PlanParseError(BackendError):
-    """LLM returned invalid or unparseable plan"""
-    pass
-
-class SUTCommunicationError(BackendError):
-    """Failed to communicate with SUT"""
-    pass
-
-class LLMCommunicationError(BackendError):
-    """Failed to communicate with LLM provider"""
-    pass
-
-# ============================================================================
-# DATA CLASSES
-# ============================================================================
-
+# Data classes
 @dataclass
 class StepDefinition:
-    """A single test step"""
     test_step: str
     expected_result: str
     note_to_llm: Optional[str] = None
 
 @dataclass
 class ActionExecutionLog:
-    """Log of a single action execution"""
     action_id: str
     plan: Dict[str, Any]
     ack: Dict[str, Any]
@@ -394,8 +208,7 @@ class ActionExecutionLog:
 
 @dataclass
 class RunResult:
-    """Result of running a single test step"""
-    status: str  # "passed", "failed", "error"
+    status: str
     attempts: int
     actions: List[ActionExecutionLog]
     final_state: Optional[Dict[str, Any]]
@@ -404,443 +217,173 @@ class RunResult:
 
 @dataclass
 class ScenarioStepOutcome:
-    """Outcome of a single scenario step"""
     step: StepDefinition
     result: RunResult
 
 @dataclass
 class ScenarioResult:
-    """Result of running a full scenario"""
-    status: str  # "passed", "failed", "error"
+    status: str
     steps: List[ScenarioStepOutcome]
     final_state: Optional[Dict[str, Any]]
     reason: Optional[str] = None
 
 # ============================================================================
-# VALIDATION SYSTEM - MODULAR DESIGN
+# SIMPLIFIED VALIDATOR
 # ============================================================================
 
 class ExpectedResultValidator:
-    """
-    Modular validation system for expected results
-    
-    Design:
-    1. Parse expected result into atomic conditions
-    2. Validate each condition independently
-    3. ALL conditions must pass (AND logic)
-    """
     
     ACTION_VERBS = {
-        'closing': ['closes', 'closed', 'disappears', 'disappeared', 'hides', 'hidden', 'gone'],
-        'loading': ['loads', 'loaded', 'loading', 'opens', 'opened', 'opening', 'appears', 'appeared'],
-        'visibility': ['visible', 'shown', 'displayed', 'shows', 'displays'],
-        'selection': ['selected', 'highlighted', 'checked', 'active', 'focused'],
-        'state_change': ['starts', 'started', 'stops', 'stopped', 'runs', 'running', 'pauses', 'paused']
+        'closing': ['closes', 'closed', 'disappears', 'gone', 'hide'],
+        'loading': ['loads', 'opens', 'appears', 'show'],
+        'visibility': ['visible', 'shown', 'displayed'],
+        'selection': ['selected', 'highlighted', 'checked', 'active'],
+        'state_change': ['starts', 'stops', 'running', 'paused']
     }
     
-    # Context-aware keywords: boost matching for element types
-    ELEMENT_TYPE_KEYWORDS = {
-        'dialog': ['dialog', 'dialogue', 'window', 'modal', 'popup'],
-        'panel': ['panel', 'pane', 'sidebar', 'toolbar'],
-        'button': ['button', 'btn'],
-        'list': ['list', 'listbox', 'listview', 'grid'],
-        'field': ['field', 'textbox', 'input', 'edit'],
-        'label': ['label', 'text', 'caption'],
-    }
-    
-    def validate(
-        self,
-        expected_result: str,
-        visible_names: List[str],
-        ui_changed: bool,
-        change_magnitude: float
-    ) -> Tuple[bool, str]:
-        """
-        Main validation entry point
-        
-        Returns:
-            (passed, reason)
-        """
-        
-        # Parse into atomic conditions
+    def validate(self, expected_result: str, visible_names: List[str], ui_changed: bool, change_magnitude: float) -> Tuple[bool, str]:
         conditions = self._parse_conditions(expected_result)
         
-        logger.info("📋 Parsed %d condition(s):", len(conditions))
         for i, cond in enumerate(conditions, 1):
-            logger.info("  %d. Type=%s, Subject='%s', Action='%s'", 
-                       i, cond['type'], cond.get('subject', ''), cond.get('action', ''))
-        
-        # Validate each condition
-        for i, cond in enumerate(conditions, 1):
-            passed, reason = self._validate_single_condition(
-                cond, visible_names, ui_changed, change_magnitude
-            )
-            
-            if passed:
-                logger.info("  ✓ Condition %d PASS: %s", i, reason)
-            else:
-                logger.info("  ✗ Condition %d FAIL: %s", i, reason)
+            passed, reason = self._validate_single_condition(cond, visible_names, ui_changed, change_magnitude)
+            if not passed:
                 return (False, f"Condition {i} failed: {reason}")
         
-        logger.info("✓ Expected HOLDS: All %d conditions passed", len(conditions))
-        return (True, f"All {len(conditions)} conditions passed")
+        return (True, "All conditions passed")
     
-    def _parse_conditions(self, expected_result: str) -> List[Dict[str, Any]]:
-        """Parse expected result into atomic conditions"""
-        
-        # Check for combined conditions (X and Y)
+    def _parse_conditions(self, expected_result: str) -> List[Dict]:
         if " and " in expected_result.lower():
-            # PRIORITY 1: Check quoted + visibility pattern FIRST
-            # Example: "'F-35_1' is highlighted and player info panel visible"
             parts = expected_result.split(" and ", 1)
-            quoted_left = re.findall(r'["\']([^"\']+)["\']', parts[0])
-            
-            visibility_keywords = ['visible', 'panel', 'shown', 'displayed', 'appears', 'open']
-            right_has_visibility = any(kw in parts[1].lower() for kw in visibility_keywords)
-            
-            if quoted_left and right_has_visibility:
-                logger.debug("  → Pattern: quoted + visibility")
-                return [
-                    self._parse_single(parts[0].strip()),
-                    self._parse_single(parts[1].strip())
-                ]
-            
-            # PRIORITY 2: Check quoted + quoted
-            quoted_right = re.findall(r'["\']([^"\']+)["\']', parts[1])
-            if quoted_left and quoted_right:
-                logger.debug("  → Pattern: quoted + quoted")
-                return [
-                    self._parse_single(parts[0].strip()),
-                    self._parse_single(parts[1].strip())
-                ]
-            
-            # PRIORITY 3: Try same-subject multi-action
-            # Example: "dialog closes and loads"
-            same_subject = self._parse_same_subject_multi_action(expected_result)
-            if same_subject:
-                return same_subject
-        
-        # Single condition
+            return [self._parse_single(p.strip()) for p in parts]
         return [self._parse_single(expected_result)]
     
-    def _parse_same_subject_multi_action(self, text: str) -> Optional[List[Dict[str, Any]]]:
-        """
-        Parse: "<subject> <action1> and <action2>"
-        Example: "dialog closes and loads"
-        """
-        
-        # Find all action verbs
-        found_actions = []
+    def _parse_single(self, text: str) -> Dict:
         text_lower = text.lower()
-        
-        for action_type, verbs in self.ACTION_VERBS.items():
-            for verb in verbs:
-                if verb in text_lower:
-                    pos = text_lower.find(verb)
-                    found_actions.append((action_type, verb, pos))
-        
-        if len(found_actions) < 2:
-            return None
-        
-        # Sort by position in text
-        found_actions.sort(key=lambda x: x[2])
-        
-        # Check if "and" is between first two actions
-        first_verb_pos = found_actions[0][2]
-        second_verb_pos = found_actions[1][2]
-        
-        between_text = text_lower[first_verb_pos:second_verb_pos]
-        if " and " not in between_text:
-            return None
-        
-        # Extract subject (before first action)
-        subject = text[:first_verb_pos].strip()
-        
-        # Subject should be meaningful
-        if len(subject) < 3 or subject.lower() in ['the', 'a', 'an', 'it']:
-            return None
-        
-        # Create conditions for first two actions
-        conditions = []
-        for action_type, verb, _ in found_actions[:2]:
-            cond = {
-                'type': action_type,
-                'subject': subject,
-                'action': verb,
-                'targets': {subject.lower()},
-                'requires_ui_change': (action_type in ['loading', 'visibility', 'state_change'])
-            }
-            conditions.append(cond)
-        
-        logger.debug("  → Detected same-subject multi-action: %s (%s + %s)",
-                    subject, found_actions[0][1], found_actions[1][1])
-        
-        return conditions
-    
-    def _parse_single(self, text: str) -> Dict[str, Any]:
-        """Parse a single condition"""
-        
-        text_lower = text.lower()
-        
-        # FIRST: Strip auxiliary verbs and articles BEFORE any processing
-        # This prevents "is visible" from capturing "is" as a target word
-        aux_verbs = r'\b(is|are|was|were|be|been|being|am|the|a|an)\b'
-        text_cleaned = re.sub(aux_verbs, ' ', text_lower).strip()
-        text_cleaned = re.sub(r'\s+', ' ', text_cleaned)  # Collapse multiple spaces
-        
-        # Detect condition type (use cleaned text for better detection)
-        condition_type = 'generic'
-        action_verb = None
+        cond_type = 'generic'
         
         for ctype, verbs in self.ACTION_VERBS.items():
-            for verb in verbs:
-                if verb in text_cleaned:
-                    condition_type = ctype
-                    action_verb = verb
-                    break
-            if condition_type != 'generic':
+            if any(v in text_lower for v in verbs):
+                cond_type = ctype
                 break
         
-        # Extract quoted items (use original text to preserve exact names)
-        quoted_items = re.findall(r'["\']([^"\']+)["\']', text)
-        
-        if quoted_items:
-            subject = quoted_items[0]
-            targets = {item.lower() for item in quoted_items}
-        elif condition_type != 'generic' and action_verb:
-            pos = text_cleaned.find(action_verb)
-            subject = text_cleaned[:pos].strip() if pos > 0 else None
-            targets = {subject} if subject else set()
-        else:
-            # Extract words from CLEANED text (auxiliary verbs already removed)
-            words = re.findall(r'\b\w{3,}\b', text_cleaned)
-            stopwords = {'and', 'or', 'with', 'that', 'this', 'from', 'for', 'row'}
-            targets = set(words) - stopwords
-            subject = None
-        
-        return {
-            'type': condition_type,
-            'subject': subject,
-            'action': action_verb,
-            'targets': targets,
-            'requires_ui_change': (condition_type in ['loading', 'visibility', 'state_change'])
-        }
-    
-    def _match_targets_in_ui(
-        self,
-        targets: Set[str],
-        visible_names: List[str],
-        match_mode: str = 'partial'  # 'exact', 'partial', 'word_based'
-    ) -> Tuple[int, int, float]:
-        """
-        Universal matching helper for all condition types
-        
-        Args:
-            targets: Set of target strings to find
-            visible_names: List of visible UI element names (already lowercase)
-            match_mode: 
-                - 'exact': Full string must match (for closing validation)
-                - 'partial': Substring match (for selection)
-                - 'word_based': Split into words and match (for visibility, multi-word phrases)
-        
-        Returns:
-            (found_count, total_targets, coverage)
-        """
+        quoted = re.findall(r'["\']([^"\']+)["\']', text)
+        targets = {item.lower() for item in quoted}
         
         if not targets:
-            return 0, 0, 0.0
+            words = re.findall(r'\b\w{3,}\b', text_lower)
+            stopwords = {
+                'and', 'or', 'the', 'is', 'with', 'that', 'to', 'of', 'in', 'on', 'at',
+                'dialog', 'panel', 'window', 'screen', 'opens', 'loads', 'appears', 'closes', 'shows','visible', 
+                'shown', 'displayed', 'selected', 'highlighted', 'checked', 'active'
+            }
+            targets = set(words) - stopwords
         
-        def fuzzy_match(target: str, ui_element: str) -> bool:
-            """
-            Check if target matches ui_element with fuzzy tolerance
+        return {'type': cond_type, 'targets': targets}
+    
+    def _match_targets(self, targets: Set[str], visible_names: List[str]) -> Tuple[int, int]:
+        def fuzzy_match(target: str, name: str) -> bool:
+            # Normalize both strings
+            target_norm = re.sub(r'[^a-z0-9]', '', target.lower())
+            name_norm = re.sub(r'[^a-z0-9]', '', name.lower())
             
-            Rules:
-            - If target is substring of ui_element → TRUE (exact partial match)
-            - If target >5 chars and Levenshtein distance ≤2 → TRUE (typo tolerance)
-            
-            Examples:
-                "management" in "scenario management" → TRUE (substring)
-                "managment" vs "management" → TRUE (distance=1, typo)
-                "plyr" vs "player" → FALSE (distance=3, too different)
-            """
-            # First: try exact substring match (fast path)
-            if target in ui_element:
+            # Exact match after normalization
+            if target_norm == name_norm:
                 return True
             
-            # Second: fuzzy match for longer words (typo tolerance)
-            if len(target) > 5:
-                # Use SequenceMatcher for similarity
-                similarity = SequenceMatcher(None, target, ui_element).ratio()
-                
-                # If very similar (>0.85), accept
-                if similarity > 0.85:
+            if target_norm.isdigit() and len(target_norm) <= 6:
+                if target_norm in name_norm:
                     return True
-                
-                # Also check if target appears as fuzzy substring in ui_element
-                # Split ui_element into words and check each
-                for word in ui_element.split():
-                    if len(word) > 5:
-                        word_similarity = SequenceMatcher(None, target, word).ratio()
-                        if word_similarity > 0.85:  # ~1-2 char difference for 6-8 char words
-                            return True
+            
+            # Fuzzy match with length constraint (OCR tolerance)
+            if len(target_norm) >= 3 and len(name_norm) >= 3:
+                len_ratio = len(target_norm) / len(name_norm)
+                # Tighter constraint: prevents "communicationtest" matching "communicationtestbackup"
+                if 0.65<= len_ratio <= 1.35:
+                    if SequenceMatcher(None, target_norm, name_norm).ratio() > 0.55:
+                        return True
             
             return False
         
-        if match_mode == 'exact':
-            # Exact match: target must appear as-is in UI
-            found_count = sum(1 for t in targets if any(t == name for name in visible_names))
-            return found_count, len(targets), found_count / len(targets)
-        
-        elif match_mode == 'partial':
-            # Partial match with fuzzy tolerance
-            found_count = sum(1 for t in targets 
-                            if any(fuzzy_match(t, name) for name in visible_names))
-            return found_count, len(targets), found_count / len(targets)
-        
-        elif match_mode == 'word_based':
-            # Word-based: split multi-word targets into words, match individually
-            all_target_words = set()
-            
-            for target in targets:
-                if ' ' in target:  # Multi-word target
-                    words = target.split()
-                    all_target_words.update(words)
-                    all_target_words.add(target)  # Also keep full phrase
-                else:
-                    all_target_words.add(target)
-            
-            # Remove stopwords
-            stopwords = {'the', 'is', 'a', 'an', 'of', 'in', 'on', 'at', 'row', 'are', 'was', 'were'}
-            all_target_words = all_target_words - stopwords
-            
-            if not all_target_words:
-                return 0, 0, 0.0
-            
-            # Count matches with fuzzy tolerance
-            found_count = sum(1 for word in all_target_words 
-                            if any(fuzzy_match(word, name) for name in visible_names))
-            
-            return found_count, len(all_target_words), found_count / len(all_target_words)
-        
-        else:
-            raise ValueError(f"Unknown match_mode: {match_mode}")
+        found = sum(1 for t in targets if any(fuzzy_match(t, n) for n in visible_names))
+        return found, len(targets)
     
-    def _validate_single_condition(
-        self,
-        condition: Dict[str, Any],
-        visible_names: List[str],
-        ui_changed: bool,
-        change_magnitude: float
-    ) -> Tuple[bool, str]:
-        """Validate a single condition using universal matching"""
+    def _validate_single_condition(self, cond: Dict, visible_names: List[str], ui_changed: bool, change_magnitude: float) -> Tuple[bool, str]:
+        ctype = cond['type']
+        targets = cond['targets']
         
-        cond_type = condition['type']
-        targets = condition['targets']
-        
-        if cond_type == 'closing':
-            # Elements must be ABSENT (use word-based to avoid false positives)
-            # Example: "Scenario Management dialog" should NOT match just "Scenario" alone
-            found, total, coverage = self._match_targets_in_ui(targets, visible_names, 'word_based')
+        if ctype == 'closing':
+            found, total = self._match_targets(targets, visible_names)
             
-            # For closing, if ANY significant portion found (>30%), consider NOT closed
-            if coverage > 0.3:
-                return (False, f"{found}/{total} words still present ({coverage:.0%})")
-            return (True, "All targets absent")
-        
-        elif cond_type == 'loading':
-            # MUST have UI change
-            if not ui_changed or change_magnitude < 0.05:
-                return (False, f"No UI change ({change_magnitude:.1f}%)")
-            return (True, f"UI changed {change_magnitude:.1f}%")
-        
-        elif cond_type == 'visibility':
-            # Elements must be PRESENT (word-based for multi-word phrases)
-            found, total, coverage = self._match_targets_in_ui(targets, visible_names, 'word_based')
+            # 1. Tam Başarı: Hedef kelimelerin hiçbiri yok (Mükemmel durum)
+            if found == 0: 
+                return (True, "Targets absent")
             
-            if total == 0:
-                return (False, "No valid targets")
+            # 2. Kısmi Başarı : 
+            # Ekranda "Scenario" kaldı ama "Management" gitti (found < total).
+            # Eğer UI da değiştiyse, demek ki pencere kapandı.
+            if ui_changed and found < total:
+                return (True, f"Partial removal ({found}/{total} left) + UI Changed")
             
-            # Accept if >=50% of words found
-            if coverage >= 0.5:
-                return (True, f"{found}/{total} target words visible ({coverage:.0%})")
-            return (False, f"Only {found}/{total} found ({coverage:.0%})")
+            # 3. Büyük UI Değişimi: Kelimeler hala ekranda görünse bile (OCR hatası olabilir),
+            # ekranın %5'inden fazlası değiştiyse kapandığını varsay.
+            if change_magnitude > 0.05: 
+                 return (True, f"Major UI change ({change_magnitude:.1%}) implies closing")
+
+            return (False, f"{found}/{total} still present")
         
-        elif cond_type == 'selection':
-            # Elements must exist (partial match - substring is OK)
-            found, total, coverage = self._match_targets_in_ui(targets, visible_names, 'partial')
+        elif ctype in ['loading', 'visibility']:
+            # Açılma işlemleri için UI değişimi + kelime kontrolü
+            if ui_changed and change_magnitude > 0.003:  #type  adımları için küçülttüm 
+                found, total = self._match_targets(targets, visible_names)
+                
+                # Ekranda hedef kelimelerden HİÇBİRİ yoksa ama UI çok değiştiyse yine de uyararak geçir
+                if total > 0 and found > 0:
+                #or change_magnitude > 0.05:
+                    return (True, f"UI changed {change_magnitude:.1%} + targets present")
+                
+                # ⚠️ EXCEPTION: Eğer target yok ise (generic check)
+                if total == 0 and change_magnitude > 0.05:
+                    return (True, f"Major UI change ({change_magnitude:.1%}), no specific targets")
+                # ❌ Target var ama bulunamadı
+                if total > 0 and found == 0:
+                    return (False, f"UI changed but targets '{list(targets)}' not found")
             
-            if found > 0:
-                return (True, f"Target found (UI changed={ui_changed})")
+            found, total = self._match_targets(targets, visible_names)
+            if found >= (total * 0.75):  # 75% gerekli
+                return (True, f"{found}/{total} matches (>=75%)")
+            else:
+                return (False, f"Only {found}/{total} found")
+        
+        elif ctype == 'selection':
+            # Seçim işlemleri: UI değiştiyse (renk değişimi vs.) başarılı say
+            if ui_changed:
+                found, total = self._match_targets(targets, visible_names)
+                if total > 0 and found == 0:
+                     return (True, "UI changed (Selection assumed)")
+                return (True, "UI changed + target present")
+            
+            found, total = self._match_targets(targets, visible_names)
+            if found > 0: return (True, "Target found")
             return (False, "Target not found")
         
-        elif cond_type == 'state_change':
-            # State keyword must exist (partial match)
-            action = condition.get('action', '')
-            if not action:
-                return (False, "No action keyword")
-            
-            # Check if action keyword appears in UI (case-insensitive substring)
-            if any(action in name for name in visible_names):
-                return (True, f"State '{action}' found")
-            
-            # Also check for related forms (e.g., "running" vs "run")
-            # Strip common suffixes
-            action_stem = action.rstrip('ing').rstrip('ed').rstrip('s')
-            if len(action_stem) >= 3 and any(action_stem in name for name in visible_names):
-                return (True, f"State '{action_stem}' found")
-            
-            return (False, f"State '{action}' not found")
-        
-        else:  # generic fuzzy match
-            # Use word-based for generic matching
-            found, total, coverage = self._match_targets_in_ui(targets, visible_names, 'word_based')
-            
+        else:
+            found, total = self._match_targets(targets, visible_names)
             if total == 0:
-                return (False, "No valid targets")
-            
-            if coverage >= 0.4:
-                return (True, f"{coverage:.0%} match ({found}/{total})")
-            return (False, f"Only {coverage:.0%} match")
+                return (False, "Could not extract any target keywords")
+
+            if found > 0 and found >= (total + 1) // 2:
+                return (True, "Generic check passed")
+            return (False, f"Low match {found}/{total}")
+
 
 # ============================================================================
-# LLM BACKEND
+# MAIN BACKEND
 # ============================================================================
 
 class LLMBackend:
-    """LLM-based action planner with modular validation"""
     
-    def __init__(
-        self,
-        state_url_windriver: str,
-        state_url_ods: str,
-        action_url: str,
-        llm_provider: str,
-        llm_model: str,
-        llm_base_url: str = "http://localhost:11434",
-        llm_api_key: Optional[str] = None,
-        *,
-        system_prompt: str = SYSTEM_PROMPT,
-        max_attempts: int = 2,
-        post_action_delay: float = 0.5,
-        sut_timeout: float = 50.0,
-        llm_timeout: float = 800.0,
-        max_tokens: int = 384,
-        max_plan_steps: int = 10,
-        schema_retry_limit: int = 1,
-        http_referrer: str = "https://agentest.local/backend",
-        client_title: str = "AgenTest LLM Backend",
-        enforce_json_response: bool = True,
-    ) -> None:
+    def __init__(self, state_url_windriver: str, state_url_ods: str, action_url: str, llm_provider: str, llm_model: str, llm_base_url: str = "http://localhost:11434", llm_api_key: Optional[str] = None, *, system_prompt: str = SYSTEM_PROMPT, max_attempts: int = 2, post_action_delay: float = 0.5, sut_timeout: float = 150.0, llm_timeout: float = 800.0, max_tokens: int = 384, max_plan_steps: int = 10, schema_retry_limit: int = 1, http_referrer: str = "https://agentest.local/backend", client_title: str = "AgenTest LLM Backend", enforce_json_response: bool = True, llamacpp_n_ctx: int = 4096, llamacpp_n_gpu_layers: int = 0, llamacpp_n_batch: int = 512) -> None:
         
-        # Validation
-        if not llm_model:
-            raise ValueError("llm_model is required")
-        if llm_provider not in ("ollama", "openrouter", "lmstudio"):
-            raise ValueError("llm_provider must be 'ollama', 'lmstudio' or 'openrouter'")
-        if llm_provider == "openrouter" and not llm_api_key:
-            raise ValueError("llm_api_key required for OpenRouter")
-        
-        # Store config
         self.state_url_windriver = state_url_windriver
         self.state_url_ods = state_url_ods
         self.max_attempts = max_attempts
@@ -849,7 +392,6 @@ class LLMBackend:
         self.llm_base_url = llm_base_url.rstrip("/")
         self.api_key = llm_api_key
         self.enforce_json_response = enforce_json_response
-        self._json_response_enabled = enforce_json_response
         self.action_url = action_url
         self.system_prompt = system_prompt.strip()
         self.post_action_delay = post_action_delay
@@ -860,954 +402,752 @@ class LLMBackend:
         self.schema_retry_limit = schema_retry_limit
         self.http_referrer = http_referrer
         self.client_title = client_title
+        self.llamacpp_n_ctx = llamacpp_n_ctx
+        self.llamacpp_n_gpu_layers = llamacpp_n_gpu_layers
+        self._llama_model: Optional[Llama] = None
+        self.llamacpp_n_batch = llamacpp_n_batch
         
-        # Validation system
+        if llm_provider == "llamacpp" and LLAMACPP_AVAILABLE:
+            self._init_llamacpp_model()
+        
         self.validator = ExpectedResultValidator()
+        self.semantic_filter = SemanticStateFilter(row_tolerance=40, match_threshold=0.70)
+        self._use_semantic_filter = True
+    
+    def _init_llamacpp_model(self) -> None:
+        if not os.path.exists(self.model):
+            raise FileNotFoundError(f"Model not found: {self.model}")
         
-        # Semantic filtering system (NEW in v2.1)
-        self.semantic_filter = SemanticStateFilter(
-            row_tolerance=15,      # Same-row detection tolerance (pixels)
-            match_threshold=0.70   # Fuzzy match threshold (70% similarity)
-        )
-        self._use_semantic_filter = True  # Enable/disable filtering
+        try:
+            self._llama_model = Llama(model_path=self.model, n_ctx=self.llamacpp_n_ctx, n_gpu_layers=self.llamacpp_n_gpu_layers, n_batch=self.llamacpp_n_batch, verbose=False)
+            logger.info("✓ Model loaded")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load llama.cpp: {e}")
     
     @classmethod
-    def from_env(cls, **overrides: Any) -> "LLMBackend":
-        """Create backend from environment variables"""
+    def from_env(cls, **overrides) -> "LLMBackend":
         env = os.getenv
-        
-        def _env_bool(name: str, default: str = "1") -> bool:
-            raw = overrides.pop(name, None)
-            if raw is None:
-                raw = overrides.pop(name.lower(), None)
-            if raw is not None:
-                if isinstance(raw, str):
-                    return raw.lower() not in {"0", "false", "no", ""}
-                return bool(raw)
-            value = env(name, default)
-            if value is None:
-                return False
-            if isinstance(value, str):
-                return value.lower() not in {"0", "false", "no", ""}
-            return bool(value)
-        
-        params = {
-            "state_url_windriver": overrides.pop(
-                "state_url_windriver",
-                env("SUT_STATE_URL_WINDRIVER", "http://127.0.0.1:18800/state/for-llm")
-            ),
-            "state_url_ods": overrides.pop(
-                "state_url_ods",
-                env("SUT_STATE_URL_ODS", "http://127.0.0.1:18800/state/from-ods")
-            ),
-            "action_url": overrides.pop(
-                "action_url",
-                env("SUT_ACTION_URL", "http://192.168.137.249:18080/action")
-            ),
-            "llm_provider": overrides.pop(
-                "llm_provider",
-                env("LLM_PROVIDER", "ollama")
-            ),
-            "llm_model": overrides.pop(
-                "llm_model",
-                env("LLM_MODEL", "mistral-small3.2:latest")
-            ),
-            "llm_base_url": overrides.pop(
-                "llm_base_url",
-                env("LLM_BASE_URL", "http://localhost:11434")
-            ),
-            "llm_api_key": overrides.pop(
-                "llm_api_key",
-                env("LLM_API_KEY") or env("OPENROUTER_API_KEY", None)
-            ),
-            "enforce_json_response": _env_bool("ENFORCE_JSON_RESPONSE"),
-        }
-        
-        params.update(overrides)
-        return cls(**params)
+        return cls(
+            state_url_windriver=overrides.get("state_url_windriver") or env("SUT_STATE_URL_WINDRIVER", "http://127.0.0.1:18800/state/for-llm"),
+            state_url_ods=overrides.get("state_url_ods") or env("SUT_STATE_URL_ODS", "http://127.0.0.1:18800/state/from-ods"),
+            action_url=overrides.get("action_url") or env("SUT_ACTION_URL", "http://192.168.137.249:18080/action"),
+            llm_provider=overrides.get("llm_provider") or env("LLM_PROVIDER", "ollama"),
+            llm_model=overrides.get("llm_model") or env("LLM_MODEL", "qwen2.5:7b-instruct-q6_k"),
+            llm_base_url=overrides.get("llm_base_url") or env("LLM_BASE_URL", "http://localhost:11434"),
+            llm_api_key=overrides.get("llm_api_key") or env("LLM_API_KEY"),
+            **{k:v for k,v in overrides.items() if k not in ['state_url_windriver','state_url_ods','action_url','llm_provider','llm_model','llm_base_url','llm_api_key']}
+        )
     
+    def _levenshtein_distance(self, s1: str, s2: str) -> int:
+        if len(s1) < len(s2): return self._levenshtein_distance(s2, s1)
+        if len(s2) == 0: return len(s1)
+        
+        previous_row = range(len(s2) + 1)
+        for i, c1 in enumerate(s1):
+            current_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                current_row.append(min(previous_row[j + 1] + 1, current_row[j] + 1, previous_row[j] + (c1 != c2)))
+            previous_row = current_row
+        return previous_row[-1]
     
-    # ========================================================================
-    # COORDINATE-BASED VALIDATION HELPERS
-    # ========================================================================
-    
-    def _check_coordinate_element_change(
-        self,
-        clicked_coords: Optional[Tuple[int, int]],
-        state_before: Dict[str, Any],
-        state_after: Dict[str, Any],
-        tolerance: int = 5
-    ) -> Tuple[bool, str]:
-        """
-        Check if element at clicked coordinates changed (name/presence)
-        
-        Generic validation for all control types:
-        - Checkbox: "checkmark" → "maximize window" (ODS naming quirk)
-        - Toggle: "toggle off" → "toggle on"
-        - Dropdown: "arrow down" → "arrow up"
-        - Radio: "empty circle" → "filled circle"
-        - Any control: element disappears or name changes
-        
-        Args:
-            clicked_coords: (x, y) coordinates that were clicked
-            state_before: UI state before click
-            state_after: UI state after click
-            tolerance: Pixel tolerance for coordinate matching (default 5px)
-        
-        Returns:
-            (changed, description) - True if element changed at coordinates
-        """
-        if not clicked_coords:
-            return (False, "No clicked coordinates provided")
+    def _check_coordinate_element_change(self, clicked_coords: Optional[Tuple[int, int]], state_before: Dict, state_after: Dict, tolerance: int = 5) -> Tuple[bool, str]:
+        if not clicked_coords: return (False, "No coords")
         
         click_x, click_y = clicked_coords
         
-        # Find element at clicked coords in BEFORE state
         elem_before = None
         for elem in state_before.get("elements", []):
             center = elem.get("center", {})
             ex, ey = center.get("x", -999), center.get("y", -999)
-            
             if abs(ex - click_x) <= tolerance and abs(ey - click_y) <= tolerance:
                 elem_before = elem
                 break
         
-        if not elem_before:
-            logger.debug("  → Coordinate validation: No element at (%d,%d) in BEFORE state", 
-                        click_x, click_y)
-            return (False, "No element found at clicked coordinates (before)")
+        if not elem_before: return (False, "No element at coords (before)")
         
-        name_before = elem_before.get("name", "").strip().lower()
-        type_before = elem_before.get("type", "").strip().lower()
-        
-        # Find element at same coords in AFTER state
         elem_after = None
         for elem in state_after.get("elements", []):
             center = elem.get("center", {})
             ex, ey = center.get("x", -999), center.get("y", -999)
-            
             if abs(ex - click_x) <= tolerance and abs(ey - click_y) <= tolerance:
                 elem_after = elem
                 break
         
-        # CASE 1: Element disappeared
-        if not elem_after:
-            logger.info("  ✓ Coordinate validation: Element disappeared at (%d,%d)", 
-                       click_x, click_y)
-            logger.info("     Before: '%s' (type=%s)", name_before[:50], type_before)
-            logger.info("     After:  (element gone)")
-            return (True, f"Element at ({click_x},{click_y}) disappeared")
+        if not elem_after: return (True, "Element disappeared")
         
+        name_before = elem_before.get("name", "").strip().lower()
         name_after = elem_after.get("name", "").strip().lower()
-        type_after = elem_after.get("type", "").strip().lower()
         
-        # CASE 2: Name changed
         if name_before != name_after:
-            logger.info("  ✓ Coordinate validation: Element name changed at (%d,%d)", 
-                       click_x, click_y)
-            logger.info("     Before: '%s' (type=%s)", name_before[:50], type_before)
-            logger.info("     After:  '%s' (type=%s)", name_after[:50], type_after)
-            return (True, f"Element name changed at ({click_x},{click_y})")
+            dist = self._levenshtein_distance(name_before, name_after)
+            max_len = max(len(name_before), len(name_after))
+            if max_len > 0 and (dist / max_len) >= 0.20:
+                return (True, f"Name changed ({dist}/{max_len})")
         
-        # CASE 3: Type changed (rare but possible)
-        if type_before != type_after:
-            logger.info("  ✓ Coordinate validation: Element type changed at (%d,%d)", 
-                       click_x, click_y)
-            logger.info("     Before: type=%s", type_before)
-            logger.info("     After:  type=%s", type_after)
-            return (True, f"Element type changed at ({click_x},{click_y})")
+        if elem_before.get("type") != elem_after.get("type"): return (True, "Type changed")
+        if elem_before.get("is_selected") != elem_after.get("is_selected"): return (True, "Selection changed")
         
-        # CASE 4: No change
-        logger.debug("  → Coordinate validation: No change at (%d,%d)", click_x, click_y)
-        logger.debug("     Name: '%s'", name_before[:50])
-        return (False, f"No change detected at clicked coordinates ({click_x},{click_y})")
+        return (False, "No change at coords")
     
-    # SCENARIO & STEP EXECUTION
+    # ========================================================================
+    # SCENARIO & STEP EXECUTION (GÜNCELLENDİ)
+    # ========================================================================
+    
+# ========================================================================
+    # SCENARIO & STEP EXECUTION (MERGED RECORDING MODU)
     # ========================================================================
     
     async def run_scenario(
-        self,
-        steps: List[StepDefinition],
-        *,
+        self, 
+        scenario_name: str, 
+        steps: List[StepDefinition], 
+        *, 
         temperature: float = 0.1,
+        save_recording: bool = True,
+        progress_callback: Optional[callable] = None
     ) -> ScenarioResult:
-        """Run a full test scenario"""
-        if not steps:
-            raise ValueError("steps must contain at least one StepDefinition")
         
-        history: List[Dict[str, Any]] = []
-        outcomes: List[ScenarioStepOutcome] = []
-        final_state: Optional[Dict[str, Any]] = None
+        if not steps: raise ValueError("steps required")
         
-        for step_index, step in enumerate(steps, 1):
-            logger.info("=" * 80)
-            logger.info("EXECUTING STEP %d/%d", step_index, len(steps))
-            logger.info("=" * 80)
+        # Helper to emit progress
+        def emit(msg: str):
+            if progress_callback:
+                progress_callback(msg)
+            logger.info(msg)
+        
+        start_time = time.time()  # Track duration for saving
+        
+        history = []
+        outcomes = []
+        final_state = None
+        
+        # Sadece saf aksiyon planlarını tutacak liste
+        raw_plans: List[Dict[str, Any]] = []
+        recording_aborted = False
+        
+        emit(f"🎬 STARTING SCENARIO: {scenario_name}")
+        
+        for idx, step in enumerate(steps, 1):
+            emit(f"📍 STEP {idx}/{len(steps)}: {step.test_step}")
             
             result = await self.run_step(
-                test_step=step.test_step,
-                expected_result=step.expected_result,
-                note_to_llm=step.note_to_llm,
-                recent_actions=history,
+                step.test_step, 
+                step.expected_result, 
+                step.note_to_llm, 
+                recent_actions=history, 
                 temperature=temperature,
+                progress_callback=progress_callback
             )
             
-            outcomes.append(ScenarioStepOutcome(step=step, result=result))
+            outcomes.append(ScenarioStepOutcome(step, result))
             final_state = result.final_state
+            
+            # --- KAYIT MANTIĞI ---
+            if result.status == "passed" and result.last_plan:
+                # Wrapper yok, direkt ham planı ekle
+                raw_plans.append(result.last_plan)
+            else:
+                recording_aborted = True
+                if save_recording:
+                    logger.warning(f"🛑 Step {idx} failed. Recording aborted.")
+            # ---------------------
             
             for log in result.actions:
                 history.append(self._summarise_for_prompt(log))
-            if len(history) > 3:
-                history = history[-3:]
+            history = history[-3:]
             
             if result.status != "passed":
-                return ScenarioResult(
-                    status=result.status,
-                    steps=outcomes,
-                    final_state=final_state,
-                    reason=result.reason
-                )
+                return ScenarioResult(result.status, outcomes, final_state, result.reason)
         
-        return ScenarioResult(status="passed", steps=outcomes, final_state=final_state)
+        # Test bitti, birleştirip kaydet
+        if save_recording and not recording_aborted and raw_plans:
+            # Step tanımlarını da gönder
+            step_definitions = [
+                {
+                    "test_step": s.test_step,
+                    "expected_result": s.expected_result,
+                    "note_to_llm": s.note_to_llm
+                } for s in steps
+            ]
+            duration = round(time.time() - start_time, 2)
+            self._save_merged_recording(scenario_name, raw_plans, step_definitions, outcomes, duration)
+        
+        return ScenarioResult("passed", outcomes, final_state)
     
-    async def run_step(
-        self,
-        test_step: str,
-        expected_result: str,
-        note_to_llm: Optional[str] = None,
-        *,
-        recent_actions: Optional[List[Dict[str, Any]]] = None,
-        temperature: float = 0.1,
-    ) -> RunResult:
-        """Run a single test step"""
-        history_payload: List[Dict[str, Any]] = list(recent_actions or [])
-        actions_log: List[ActionExecutionLog] = []
-        last_plan: Optional[Dict[str, Any]] = None
-        state: Dict[str, Any] = {}
+    def _save_merged_recording(self, name: str, plans: List[Dict[str, Any]], step_definitions: Optional[List[Dict[str, Any]]] = None, outcomes: Optional[List] = None, duration: float = 0) -> None:
+        """
+        Tüm adımları TEK BİR Action Payload olarak birleştirip kaydeder.
+        Step tanımları ve execution sonuçları da ayrıca kaydedilir.
+        """
+        try:
+            # Dosya ismini temizle
+            safe_name = re.sub(r'[^\w\-_\. ]', '', name).replace(' ', '_')
+            filename = f"{safe_name}.json"
+            directory = "saved_tests"
+            
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+                
+            filepath = os.path.join(directory, filename)
+            
+            # --- BİRLEŞTİRME MANTIĞI ---
+            merged_steps = []
+            
+            for i, plan in enumerate(plans):
+                # O adıma ait alt adımları (click, type vs) al
+                current_steps = plan.get("steps", [])
+                
+                if not current_steps:
+                    continue
+                    
+                # Listeye ekle
+                merged_steps.extend(current_steps)
+                
+                # Eğer son adım değilse, adımlar arası UI'ın kendine gelmesi için
+                # küçük bir 'wait' ekle (Örn: 500ms). Bu, 'Blind Replay' güvenliğini artırır.
+                if i < len(plans) - 1:
+                    merged_steps.append({"type": "wait", "ms": 500})
+            
+            # Execution sonuçlarını kaydet (See Results için)
+            execution_result = None
+            if outcomes:
+                execution_result = []
+                for outcome in outcomes:
+                    outcome_dict = {
+                        "step": {
+                            "test_step": outcome.step.test_step,
+                            "expected_result": outcome.step.expected_result,
+                            "note_to_llm": outcome.step.note_to_llm
+                        },
+                        "result": {
+                            "status": outcome.result.status,
+                            "attempts": outcome.result.attempts,
+                            "reason": outcome.result.reason,
+                            "actions": []
+                        }
+                    }
+                    # Actions'ı serileştir
+                    for action in outcome.result.actions:
+                        action_dict = {
+                            "action_id": action.action_id,
+                            "plan": action.plan,
+                            "ack": action.ack,
+                            "state_before": action.state_before,
+                            "state_after": action.state_after
+                        }
+                        outcome_dict["result"]["actions"].append(action_dict)
+                    execution_result.append(outcome_dict)
+            
+            # Action Endpoint'in beklediği formatı oluştur + step tanımları + execution result
+            final_payload = {
+                "action_id": f"replay_{safe_name}_{int(time.time())}",
+                "coords_space": "physical",
+                "steps": merged_steps,
+                "step_definitions": step_definitions or [],  # Orijinal test adımları
+                "execution_result": execution_result,  # İlk çalıştırma sonuçları
+                "execution_duration": duration  # Orijinal çalıştırma süresi
+            }
+            # ---------------------------
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(final_payload, f, indent=2, ensure_ascii=False)
+                
+            logger.info("💾 MERGED SCENARIO RECORDED: %s", filepath)
+            
+        except Exception as e:
+            logger.error("⚠️ Failed to save merged recording: %s", e)
+
+    async def run_step(self, test_step: str, expected_result: str, note_to_llm: Optional[str] = None, *, recent_actions=None, temperature=0.1, progress_callback: Optional[callable] = None) -> RunResult:
+        
+        # Helper to emit progress
+        def emit(msg: str):
+            if progress_callback:
+                progress_callback(msg)
+            logger.info(msg)
+        
+        actions_log = []
+        state = {}
         
         for attempt in range(1, self.max_attempts + 1):
-            detection_method = "WinDriver" if attempt == 1 else "ODS"
-            logger.info("Attempt %d/%d (%s)", attempt, self.max_attempts, detection_method)
+            method = "WinDriver" if attempt == 1 else "ODS"
+            emit(f"🔄 Attempt {attempt}/{self.max_attempts} ({method})")
             
-            # Fetch state
-            state = await self._fetch_state(attempt_number=attempt)
+            state = await self._fetch_state(attempt)
             
-            # Request plan
-            for schema_attempt in range(self.schema_retry_limit + 1):
-                plan = await self._request_plan(
-                    test_step=test_step,
-                    expected_result=expected_result,
-                    note_to_llm=note_to_llm,
-                    state=state,
-                    recent_actions=history_payload,
-                    temperature=temperature,
-                    schema_hint=None,
-                    attempt_number=attempt,
-                )
-                
-                # Validate plan
-                validation_error = self._validate_plan_against_screen(plan, state)
-                if validation_error:
-                    if schema_attempt >= self.schema_retry_limit:
-                        msg = f"Plan failed validation: {validation_error}"
-                        logger.error(msg)
-                        return RunResult(
-                            status="error",
-                            attempts=attempt,
-                            actions=actions_log,
-                            final_state=state,
-                            last_plan=plan,
-                            reason=msg,
-                        )
-                    continue
-                
-                if plan.pop("_backend_steps_substituted", False):
-                    if schema_attempt >= self.schema_retry_limit:
-                        message = "LLM plan missing valid 'steps'"
-                        logger.error(message)
-                        return RunResult(
-                            status="error",
-                            attempts=attempt,
-                            actions=actions_log,
-                            final_state=state,
-                            last_plan=plan,
-                            reason=message,
-                        )
-                    continue
-                
-                break
-            else:
-                raise RuntimeError("Schema retry loop exited unexpectedly")
+            """# PRE-CHECK
+            if attempt == 1:
+                target_match = re.search(r"'([^']+)'", test_step)
+                if target_match:
+                    target = target_match.group(1).lower()
+                    if not any(target in (e.get("name") or "").lower() for e in state.get("elements", [])):
+                        logger.info("🚀 PRE-CHECK: Target not in WinDriver")
+                        continue"""
             
-            last_plan = plan
+
+            if attempt == 1 and "elements" in state:
+                target_match = re.search(r"'([^']+)'", test_step)
+                if target_match:
+                    target_name = target_match.group(1).lower().strip()
+                    
+                    """# Bu kelimeler isimde tam yazmasa bile (örn: type='button') LLM bulabilir.
+                    # O yüzden bunları PRE-CHECK ile engellemiyoruz.
+                    generic_terms = {
+                        "checkbox", "button", "icon", "input", "toggle", "tab", 
+                        "panel", "window", "list", "menu", "dropdown", "select", "box",
+                        "text", "link", "image", "field"
+                    }"""
+                    
+                    # Aranan kelime jenerik değilse (örn: 'Save', 'General') kontrol et
+                    #if target_name not in generic_terms and len(target_name) > 2:
+                    if target_name and len(target_name) > 2:
+                        found = any(target_name == (e.get("name", "") or "").lower().strip() for e in state.get("elements", []))
+                        
+                        if not found:
+                            emit(f"🚀 PRE-CHECK: '{target_name}' NOT found → ODS")
+                            continue
+            
+            # Plan
+            emit("📤 SENDING TO LLM...")
+            try:
+                plan, llm_view = await self._request_plan(test_step=test_step, expected_result=expected_result, note_to_llm=note_to_llm, state=state, recent_actions=recent_actions or [], temperature=temperature, attempt_number=attempt)
+            except Exception as e:
+                emit(f"❌ Planning failed: {e}")
+                continue
+            
             steps = plan.get("steps", [])
-            reasoning = plan.get("reasoning", "")
             
-            # STEP COUNT VALIDATION
-            if len(steps) > self.max_plan_steps:
-                logger.error("❌ LLM generated %d steps (max: %d)", len(steps), self.max_plan_steps)
-                plan["steps"] = []
-                plan["reasoning"] = f"Rejected: {len(steps)} steps exceeds limit"
-                plan["_backend_steps_substituted"] = True
-                steps = []
-                reasoning = plan["reasoning"]
-            
-            # Log plan
-            logger.info("=" * 80)
-            logger.info("📋 TEST STEP: %s", test_step)
-            logger.info("🎯 EXPECTED: %s", expected_result[:100])
-            logger.info("🤖 LLM PLAN: %d step(s)", len(steps))
-            logger.info("💭 REASONING: %s", reasoning[:150])
-            
-            if steps:
-                logger.info("📍 ACTIONS:")
-                for i, step in enumerate(steps, 1):
-                    step_type = step.get("type", "unknown")
-                    if step_type == "click":
-                        point = step.get("target", {}).get("point", {})
-                        logger.info("  %d. CLICK at (%s, %s)", i, point.get('x'), point.get('y'))
-                    elif step_type == "type":
-                        logger.info("  %d. TYPE '%s...'", i, step.get("text", "")[:30])
-                    else:
-                        logger.info("  %d. %s", i, step_type.upper())
-            else:
-                logger.warning("  ⚠️  NO ACTIONS")
+            if not steps:
                 if attempt < self.max_attempts:
-                    logger.info("  → Retrying with ODS...")
                     continue
-                else:
-                    return RunResult(
-                        status="failed",
-                        attempts=attempt,
-                        actions=actions_log,
-                        final_state=state,
-                        last_plan=plan,
-                        reason=f"Element not found after {self.max_attempts} attempts",
-                    )
+                return RunResult("failed", attempt, actions_log, state, plan, "No actions")
             
-            logger.info("=" * 80)
+            emit(f"🎯 PARSED PLAN: {len(steps)} action(s)")
             
-            # Execute action
-            state_before = state
-            ack = await self._send_action(plan)
+            # Execute
+            emit("⚡ EXECUTING ACTION...")
+            state_before = state  # Keep original state for validation
+            try:
+                ack = await self._send_action(plan)
+            except Exception as e:
+                emit(f"❌ Action failed: {e}")
+                continue
             
-            log_entry = ActionExecutionLog(
-                action_id=plan.get("action_id", ""),
-                plan=plan,
-                ack=ack,
-                state_before=state_before,
-            )
-            actions_log.append(log_entry)
-            history_payload.append(self._summarise_for_prompt(log_entry))
+            emit("🔍 VALIDATION CHECK...")
+            final_state = await self._fetch_state_safe(state, attempt)
             
-            if ack.get("status") != "ok":
-                final_state = await self._fetch_state_safe(state, attempt_number=attempt)
-                log_entry.state_after = final_state
-                message = f"SUT error: {ack.get('message', '')}"
-                logger.error("✗ %s", message)
-                return RunResult(
-                    status="error",
-                    attempts=attempt,
-                    actions=actions_log,
-                    final_state=final_state,
-                    last_plan=plan,
-                    reason=message,
-                )
+            # Add llm_view to state_before copy for UI display only
+            state_before_with_llm = {**state_before, "llm_view": llm_view}
+            log = ActionExecutionLog(plan.get("action_id", ""), plan, ack, state_before_with_llm, final_state)
+            actions_log.append(log)
             
-            # Fetch state after
-            final_state = await self._fetch_state_safe(state, attempt_number=attempt)
-            log_entry.state_after = final_state
-            
-            # Detect UI change
-            ui_changed, change_magnitude = self._detect_ui_change(state_before, final_state)
-            
-            logger.info("🔍 VALIDATING...")
-            logger.info("  Expected: %s", expected_result[:100])
-            logger.info("  UI changed: %s (%.1f%%)", "YES" if ui_changed else "NO", change_magnitude * 100)
-            
-            # Validate expected result
-            validation_passed = self._expected_holds(
-                final_state,
-                expected_result,
-                plan,
-                state_before=state_before
-            )
-            
-            if validation_passed:
-                logger.info("✓ SUCCESS")
-                logger.info("  Validation: PASS ✓")
-                return RunResult(
-                    status="passed",
-                    attempts=attempt,
-                    actions=actions_log,
-                    final_state=final_state,
-                    last_plan=plan,
-                    reason=f"Expected result achieved (detection: {detection_method})",
-                )
-            else:
-                logger.info("  Validation: FAIL ✗")
-                
-                if attempt >= self.max_attempts:
-                    return RunResult(
-                        status="failed",
-                        attempts=attempt,
-                        actions=actions_log,
-                        final_state=final_state,
-                        last_plan=plan,
-                        reason=f"Expected result not achieved after {attempt} attempts",
-                    )
-                
-                logger.info("  → Retrying with ODS...")
+            # Validate using original state_before (without llm_view)
+            if self._expected_holds(final_state, expected_result, plan, state_before, test_step):
+                emit("✅ PASSED")
+                return RunResult("passed", attempt, actions_log, final_state, plan, f"Success ({method})")
         
-        return RunResult(
-            status="failed",
-            attempts=self.max_attempts,
-            actions=actions_log,
-            final_state=final_state,
-            last_plan=last_plan,
-            reason=f"Exhausted {self.max_attempts} attempts",
-        )
+        emit("❌ STEP FAILED")
+        return RunResult("failed", self.max_attempts, actions_log, state, None, "Max attempts")
     
-    # ========================================================================
-    # STATE & ACTION COMMUNICATION
-    # ========================================================================
+    async def _fetch_state(self, attempt: int = 1) -> Dict:
+        url = self.state_url_ods if attempt == 2 else self.state_url_windriver
+        async with httpx.AsyncClient(timeout=self.sut_timeout) as client:
+            resp = await client.post(url, json={})
+            resp.raise_for_status()
+            return resp.json()
     
-    async def _fetch_state(self, attempt_number: int = 1) -> Dict[str, Any]:
-        """Fetch current state from SUT"""
-        use_ods = (attempt_number == 2)
-        state_url = self.state_url_ods if use_ods else self.state_url_windriver
-        source_name = "ODS" if use_ods else "WinDriver"
-        
-        logger.info("Fetching state (%s): %s", source_name, state_url)
-        
+    async def _fetch_state_safe(self, fallback: Dict, attempt: int = 1) -> Dict:
         try:
-            async with httpx.AsyncClient(timeout=self.sut_timeout) as client:
-                response = await client.post(state_url, json={})
-                response.raise_for_status()
-        except httpx.HTTPError as exc:
-            message = f"Failed to contact SUT: {exc}"
-            logger.error(message)
-            raise SUTCommunicationError(message) from exc
-        
-        try:
-            state = response.json()
-        except json.JSONDecodeError as exc:
-            message = "SUT returned invalid JSON"
-            logger.error(message)
-            raise SUTCommunicationError(message) from exc
-        
-        element_count = len(state.get("elements", []))
-        logger.debug("  → Received %d elements", element_count)
-        
-        return state
-    
-    async def _fetch_state_safe(self, fallback: Dict[str, Any], attempt_number: int = 1) -> Dict[str, Any]:
-        """Fetch state with fallback"""
-        try:
-            return await self._fetch_state(attempt_number)
-        except BackendError:
-            logger.warning("Failed to fetch state, using fallback")
+            return await self._fetch_state(attempt)
+        except:
             return fallback
     
-    async def _send_action(self, plan: Dict[str, Any]) -> Dict[str, Any]:
-        """Send action plan to SUT"""
-        try:
-            async with httpx.AsyncClient(timeout=self.sut_timeout) as client:
-                response = await client.post(self.action_url, json=plan)
-                response.raise_for_status()
-        except httpx.HTTPError as exc:
-            message = f"Failed to send action: {exc}"
-            logger.error(message)
-            raise SUTCommunicationError(message) from exc
-        
-        try:
-            return response.json()
-        except json.JSONDecodeError as exc:
-            message = "SUT returned invalid JSON"
-            logger.error(message)
-            raise SUTCommunicationError(message) from exc
+    async def _send_action(self, plan: Dict) -> Dict:
+        async with httpx.AsyncClient(timeout=self.sut_timeout) as client:
+            resp = await client.post(self.action_url, json=plan)
+            resp.raise_for_status()
+            return resp.json()
     
+    def _detect_ui_change(self, before: Dict, after: Dict) -> Tuple[bool, float]:
+        def get_hash(s):
+            items = sorted([f"{e.get('name')}@{e.get('center')}" for e in s.get("elements", [])])
+            return hashlib.md5("|".join(items).encode()).hexdigest()
+        
+        if get_hash(before) == get_hash(after): return False, 0.0
+        
+        c1 = len(before.get("elements", []))
+        c2 = len(after.get("elements", []))
+        ratio = abs(c1 - c2) / c1 if c1 > 0 else 1.0
+         # FIXED: If hash differs but count is same, calculate actual change magnitude
+        if c1 == c2:
+            # Count how many elements actually changed
+            before_items = {f"{e.get('name')}@{e.get('center')}" for e in before.get("elements", [])}
+            after_items = {f"{e.get('name')}@{e.get('center')}" for e in after.get("elements", [])}
+
+            changed = len(before_items.symmetric_difference(after_items))
+            ratio = changed / c1 if c1 > 0 else 0.0
+        return True, ratio
+
     # ========================================================================
-    # UI CHANGE DETECTION
-    # ========================================================================
-    
-    def _compute_state_hash(self, state: Dict[str, Any]) -> str:
-        """Compute hash of UI state"""
-        elements = state.get("elements", [])
-        
-        state_signature = []
-        for elem in elements:
-            name = elem.get("name", "")
-            center = elem.get("center", {})
-            
-            # Include selection state
-            is_selected = elem.get("is_selected", False)
-            selection_state = elem.get("selection_state", "")
-            
-            sig = f"{name}@{center.get('x', 0)},{center.get('y', 0)}"
-            if is_selected or selection_state:
-                sig += f"|sel:{is_selected}:{selection_state}"
-            
-            state_signature.append(sig)
-        
-        signature_str = "|".join(sorted(state_signature))
-        return hashlib.md5(signature_str.encode()).hexdigest()
-    
-    def _detect_ui_change(
-        self,
-        state_before: Dict[str, Any],
-        state_after: Dict[str, Any]
-    ) -> Tuple[bool, float]:
-        """Detect UI change"""
-        hash_before = self._compute_state_hash(state_before)
-        hash_after = self._compute_state_hash(state_after)
-        
-        if hash_before == hash_after:
-            return False, 0.0
-        
-        elems_before = len(state_before.get("elements", []))
-        elems_after = len(state_after.get("elements", []))
-        
-        if elems_before == 0:
-            change_ratio = 1.0 if elems_after > 0 else 0.0
-        else:
-            change_ratio = abs(elems_after - elems_before) / elems_before
-        
-        return True, change_ratio
-    
-    # ========================================================================
-    # EXPECTED RESULT VALIDATION
+    # SIMPLIFIED VALIDATION (NO DIALOG BOUNDS COMPLEXITY) + DEBUG LOGGING
     # ========================================================================
     
-    def _expected_holds(
-        self,
-        state: Dict[str, Any],
-        expected_result: str,
-        plan_executed: Dict[str, Any],
-        state_before: Optional[Dict[str, Any]] = None,
-    ) -> bool:
-        """Validate expected result using modular validation system with coordinate-based checking"""
+    def _expected_holds(self, state: Dict, expected_result: str, plan: Dict, state_before: Optional[Dict] = None, test_step: Optional[str] = None) -> bool:
+        
+        logger.info("=" * 80)
+        logger.info("VALIDATION CHECK")
+        logger.info("=" * 80)
+        logger.info("Expected result: %s", expected_result)
         
         if not expected_result:
+            logger.warning("⚠️ No expected result provided")
             return False
         
-        steps_executed = plan_executed.get("steps", [])
-        if not steps_executed:
-            logger.warning("❌ No actions executed")
+        steps = plan.get("steps", [])
+        if not steps:
+            logger.warning("⚠️ No steps in plan")
             return False
         
-        # Check if meaningful action executed
-        meaningful_types = {"click", "type", "key_combo", "drag"}
-        has_meaningful = any(s.get("type") in meaningful_types for s in steps_executed)
-        if not has_meaningful:
-            logger.warning("❌ Only passive actions")
-            return False
-        
-        # Extract clicked coordinates from first click action
+        # Get coords from last click
         clicked_coords = None
-        for step in steps_executed:
+        for step in reversed(steps):
             if step.get("type") == "click":
-                point = step.get("target", {}).get("point", {})
-                if point and "x" in point and "y" in point:
-                    clicked_coords = (int(point["x"]), int(point["y"]))
-                    logger.debug("  → Clicked coordinates: %s", clicked_coords)
-                    break
+                pt = step.get("target", {}).get("point", {})
+                if "x" in pt: clicked_coords = (int(pt["x"]), int(pt["y"]))
+                break
         
-        # Get visible elements
+        if clicked_coords:
+            logger.info("Clicked coordinates: (%d, %d)", clicked_coords[0], clicked_coords[1])
+        else:
+            logger.info("No click coordinates (keyboard action or other)")
+        
         elems = state.get("elements", [])
         if not elems:
+            logger.warning("⚠️ No elements in state")
             return False
         
-        visible_names = [e.get("name", "").strip().lower() for e in elems if e.get("name")]
+        logger.info("Elements in current state: %d", len(elems))
         
-        # Calculate UI change
-        ui_changed = False
-        change_magnitude = 0.0
-        if state_before is not None:
-            ui_changed, change_magnitude = self._detect_ui_change(state_before, state)
+        visible_names = [e.get("name", "").lower() for e in elems if e.get("name")]
+        logger.info("Visible element names: %d unique names", len(set(visible_names)))
         
-        # COORDINATE-BASED VALIDATION (Generic for all controls)
-        # Check if element at clicked coordinates changed
-        coord_changed = False
-        coord_reason = ""
+        ui_changed, change_mag = self._detect_ui_change(state_before, state) if state_before else (False, 0.0)
+        logger.info("UI changed: %s (magnitude: %.1f%%)", "YES" if ui_changed else "NO", change_mag * 100)
+        
+        coord_changed, coord_reason = (False, "")
+
         if clicked_coords and state_before:
-            coord_changed, coord_reason = self._check_coordinate_element_change(
-                clicked_coords,
-                state_before,
-                state,
-                tolerance=5  # 5 pixel tolerance
-            )
-            
-            if coord_changed:
-                logger.info("✓ COORDINATE VALIDATION PASSED: %s", coord_reason)
-                # For control interactions (checkbox, toggle, dropdown, etc.),
-                # coordinate change is sufficient proof
-                return True
+            coord_changed, coord_reason = self._check_coordinate_element_change(clicked_coords, state_before, state)
         
-        # Fallback to standard validation if coordinate check didn't pass
-        passed, reason = self.validator.validate(
-            expected_result,
-            visible_names,
-            ui_changed,
-            change_magnitude
-        )
+        if coord_changed:
+            logger.info("Coordinate element changed: YES (%s)", coord_reason)
+        else:
+            logger.info("Coordinate element changed: NO")
+        
+        expected_lower = expected_result.lower()
+
+        is_selection = any(v in expected_lower for v in ['selected', 'highlighted', 'checked'])
+        is_closing_action = any(v in expected_lower for v in ['closes', 'gone', 'hide'])
+        
+        logger.info("Is selection action: %s", is_selection)
+        logger.info("Is closing action: %s", is_closing_action)
+
+        if coord_changed and (is_selection or is_closing_action):
+            logger.info("✅ PRIORITY PASS: Coordinate change detected (%s)", coord_reason)
+            logger.info("=" * 80)
+            return True
+        
+        logger.info("-" * 80)
+        logger.info("Running standard validation...")
+        logger.info("-" * 80)
+        
+        # Standard validation (UI change + target matching)
+        passed, reason = self.validator.validate(expected_result, visible_names, ui_changed, change_mag)
         
         if passed:
-            logger.info("✓ Expected HOLDS: %s", reason)
+            logger.info("VALIDATION PASSED: %s", reason)
         else:
-            logger.info("✗ Expected NOT met: %s", reason)
-            # Log additional context about coordinate check
-            if clicked_coords:
-                logger.info("  → Coordinate check: %s", coord_reason)
+            logger.error("❌ VALIDATION FAILED: %s", reason)
+        
+        logger.info("=" * 80)
         
         return passed
     
-    # ========================================================================
-    # LLM COMMUNICATION
-    # ========================================================================
-    
-    async def _request_plan(
-        self,
-        *,
-        test_step: str,
-        expected_result: str,
-        note_to_llm: Optional[str],
-        state: Dict[str, Any],
-        recent_actions: List[Dict[str, Any]],
-        temperature: float,
-        schema_hint: Optional[str] = None,
-        attempt_number: int = 1,
-    ) -> Dict[str, Any]:
-        """Request action plan from LLM"""
-        messages = self._build_messages(
-            test_step=test_step,
-            expected_result=expected_result,
-            note_to_llm=note_to_llm,
-            state=state,
-            recent_actions=recent_actions,
-            schema_hint=schema_hint,
-            attempt_number=attempt_number,
-        )
+    # LLM Communication
+    async def _request_plan(self, *, test_step: str, expected_result: str, note_to_llm: Optional[str], state: Dict, recent_actions: List, temperature: float, attempt_number: int) -> tuple[Dict, str]:
+        
+        messages, llm_view = self._build_messages(test_step, expected_result, note_to_llm, state, recent_actions, attempt_number)
         
         if self.llm_provider == "ollama":
-            return await self._request_plan_ollama(messages, temperature)
-        elif self.llm_provider == "lmstudio":
-            return await self._request_plan_lmstudio(messages, temperature)
+            plan = await self._request_plan_ollama(messages, temperature)
+        elif self.llm_provider == "llamacpp":
+            plan = await self._request_plan_llamacpp(messages, temperature)
+        elif self.llm_provider == "openai":
+            plan = await self._request_plan_openai(messages, temperature)
         else:
-            return await self._request_plan_openrouter(messages, temperature)
+            plan = await self._request_plan_openrouter(messages, temperature)
+        
+        return plan, llm_view
     
-    async def _request_plan_ollama(
-        self,
-        messages: List[Dict[str, Any]],
-        temperature: float,
-    ) -> Dict[str, Any]:
-        """Request from Ollama"""
-        body = {
-            "model": self.model,
-            "messages": messages,
-            "stream": False,
-            "format": AGEN_TEST_PLAN_SCHEMA,
-            "options": {
-                "temperature": temperature,
-                "num_predict": self.max_tokens,
-            },
-        }
-        
-        url = f"{self.llm_base_url}/api/chat"
-        
-        try:
-            async with httpx.AsyncClient(timeout=self.llm_timeout) as client:
-                response = await client.post(url, json=body)
-                response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise LLMCommunicationError(f"Ollama request failed: {exc}") from exc
-        
-        try:
-            data = response.json()
-            content = data["message"]["content"].strip()
-        except (KeyError, json.JSONDecodeError) as exc:
-            raise LLMCommunicationError(f"Invalid Ollama response: {exc}") from exc
-        
-        if not content:
-            raise PlanParseError("Ollama returned empty content")
-        
-        return self._parse_plan(content)
+    async def _request_plan_ollama(self, messages: List, temperature: float) -> Dict:
+        async with httpx.AsyncClient(timeout=self.llm_timeout) as client:
+            resp = await client.post(f"{self.llm_base_url}/api/chat", json={"model": self.model, "messages": messages, "stream": False, "format": AGEN_TEST_PLAN_SCHEMA, "options": {"temperature": temperature}})
+            return self._parse_plan(resp.json()["message"]["content"])
     
-    async def _request_plan_lmstudio(
-        self,
-        messages: List[Dict[str, Any]],
-        temperature: float,
-    ) -> Dict[str, Any]:
-        """Request from LM Studio"""
-        url = f"{self.llm_base_url}/chat/completions"
+    async def _request_plan_llamacpp(self, messages: List, temperature: float) -> Dict:
+        if not self._llama_model: raise LLMCommunicationError("Model not loaded")
         
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        sys_msg = next((m["content"] for m in messages if m.get("role") == "system"), "")
+        user_msg = next((m["content"] for m in messages if m.get("role") == "user"), "")
+        prompt = f"<|im_start|>system\n{sys_msg}<|im_end|>\n<|im_start|>user\n{user_msg}<|im_end|>\n<|im_start|>assistant\n"
         
-        body = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": self.max_tokens,
-            "stream": False,
-        }
-        
-        if self.enforce_json_response:
-            body["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "AgenTestPlan",
-                    "schema": AGEN_TEST_PLAN_SCHEMA,
-                },
-            }
-        
-        try:
-            async with httpx.AsyncClient(timeout=self.llm_timeout) as client:
-                response = await client.post(url, headers=headers, json=body)
-                response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise LLMCommunicationError(f"LM Studio failed: {exc}") from exc
-        
-        try:
-            data = response.json()
-            content = data["choices"][0]["message"]["content"].strip()
-        except (KeyError, IndexError, json.JSONDecodeError) as exc:
-            raise LLMCommunicationError(f"Invalid LM Studio response: {exc}") from exc
-        
-        if not content:
-            raise PlanParseError("LM Studio returned empty content")
-        
-        return self._parse_plan(content)
+        loop = asyncio.get_event_loop()
+        resp = await loop.run_in_executor(None, lambda: self._llama_model.create_completion(prompt, max_tokens=self.max_tokens, temperature=temperature))
+        return self._parse_plan(resp["choices"][0]["text"])
     
-    async def _request_plan_openrouter(
-        self,
-        messages: List[Dict[str, Any]],
-        temperature: float,
-    ) -> Dict[str, Any]:
-        """Request from OpenRouter"""
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "HTTP-Referer": self.http_referrer,
-            "X-Title": self.client_title,
-            "Content-Type": "application/json",
-        }
-        
-        body = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": self.max_tokens,
-        }
-        
-        if self.enforce_json_response:
-            body["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "AgenTestPlan",
-                    "schema": AGEN_TEST_PLAN_SCHEMA,
-                },
-            }
-        
-        try:
-            async with httpx.AsyncClient(timeout=self.llm_timeout) as client:
-                response = await client.post(url, headers=headers, json=body)
-                response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise LLMCommunicationError(f"OpenRouter failed: {exc}") from exc
-        
-        try:
-            data = response.json()
-            content = data["choices"][0]["message"]["content"].strip()
-        except (KeyError, IndexError, json.JSONDecodeError) as exc:
-            raise LLMCommunicationError(f"Invalid OpenRouter response: {exc}") from exc
-        
-        if not content:
-            raise PlanParseError("OpenRouter returned empty content")
-        
-        return self._parse_plan(content)
+    async def _request_plan_openai(self, messages: List, temperature: float) -> Dict:
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        async with httpx.AsyncClient(timeout=self.llm_timeout) as client:
+            resp = await client.post(f"{self.llm_base_url}/chat/completions", headers=headers, json={"model": self.model, "messages": messages, "temperature": temperature})
+            return self._parse_plan(resp.json()["choices"][0]["message"]["content"])
     
-    def _build_messages(
-        self,
-        *,
-        test_step: str,
-        expected_result: str,
-        note_to_llm: Optional[str],
-        state: Dict[str, Any],
-        recent_actions: List[Dict[str, Any]],
-        schema_hint: Optional[str],
-        attempt_number: int,
-    ) -> List[Dict[str, Any]]:
-        """Build messages for LLM with optional semantic filtering"""
-        screen_info = state.get("screen", {})
+    async def _request_plan_openrouter(self, messages: List, temperature: float) -> Dict:
+        headers = {"Authorization": f"Bearer {self.api_key}", "HTTP-Referer": self.http_referrer}
+        async with httpx.AsyncClient(timeout=self.llm_timeout) as client:
+            resp = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json={"model": self.model, "messages": messages, "temperature": temperature})
+            return self._parse_plan(resp.json()["choices"][0]["message"]["content"])
+    
+    def _build_messages(self, test_step: str, expected_result: str, note_to_llm: Optional[str], state: Dict, recent_actions: List, attempt_number: int) -> tuple[List[Dict], str]:
         
-        # SEMANTIC FILTERING (NEW in v2.1)
-        if self._use_semantic_filter and "elements" in state:
-            logger.info("🔍 Applying semantic filtering...")
-            
-            original_elements = state["elements"]
-            original_count = len(original_elements)
-            
-            # Filter elements based on test step, expected result, and note
-            filtered_elements = self.semantic_filter.filter_elements(
-                all_elements=original_elements,
-                test_step=test_step,
-                expected_result=expected_result,
-                note_to_llm=note_to_llm or ""
-            )
-            
-            filtered_count = len(filtered_elements)
-            reduction_pct = ((original_count - filtered_count) / original_count * 100) if original_count > 0 else 0
-            
-            logger.info("  → Elements: %d → %d (%.1f%% reduction)", 
-                       original_count, filtered_count, reduction_pct)
-            
-            # Build filtered llm_view
-            llm_view, id_map = self.semantic_filter.format_for_llm(filtered_elements)
-            
-            # Log filtered llm_view
-            logger.info("📋 Filtered LLM View (%d chars, %d lines):", len(llm_view), llm_view.count('\n') + 1)
-            logger.info("─" * 80)
-            for line in llm_view.split('\n'):
-                logger.info("  %s", line)
-            logger.info("─" * 80)
-            
-            # Store id_map for later reference (if needed for action execution)
-            state["_filtered_id_map"] = id_map
-            
-        else:
-            # Use original llm_view from state
-            llm_view = state.get("llm_view", "")
-            if not llm_view:
-                logger.warning("⚠️  No llm_view in state and filtering disabled!")
+        elements_to_show = state.get("elements", [])
         
-        payload: Dict[str, Any] = {
-            "test_step": test_step,
-            "expected_result": expected_result,
-            "screen": {"w": screen_info.get("w"), "h": screen_info.get("h")},
-            "current_state": llm_view,
-        }
+        # 1. Semantic Filter Uygula (Eğer aktifse)
+        if self._use_semantic_filter and elements_to_show:
+            filtered = self.semantic_filter.filter_elements(elements_to_show, test_step, expected_result, note_to_llm or "")
+
+            # DEBUG: Filtreleme istatistikleri
+            logger.info("=" * 80)
+            logger.info("📊 SEMANTIC FILTER STATS")
+            logger.info("=" * 80)
+            logger.info("Original elements: %d", len(elements_to_show))
+            logger.info("Filtered elements: %d", len(filtered))
+            
+            elements_to_show = filtered
+
+        # 2. LLM View Oluştur (MANUEL FORMATLAMA - SYSTEM PROMPT İLE UYUMLU)
+        # Hata buradaydı: state.get("llm_view") kullanıldığı için format bozuluyordu.
+        # Şimdi manuel olarak ID | Name | Type | (x,y) formatında örüyoruz.
+        
+        lines = []
+        lines.append("ID | Name | Type | (x,y)")
+        lines.append("-" * 60)
+        
+        for idx, el in enumerate(elements_to_show, 1):
+            e_id = idx  # 1'den başlayan sanal ID
+            """name = str(el.get("name") or "Unknown").replace("|", "")[:40]
+            e_type = str(el.get("type") or "unk")[:10] """  #or geldi , str gitti
+            name = el.get("name", "Unknown").replace("|", "")[:40] # Boru karakterini temizle, çok uzunsa kes
+            e_type = el.get("type", "unk")[:10]
+            center = el.get("center", {})
+            x, y = center.get("x", 0), center.get("y", 0)
+            
+            # Format: 1 | Save | button | (100,200)
+            lines.append(f"{e_id} | {name} | {e_type} | ({x},{y})")
+            
+        llm_view = "\n".join(lines)
+        
+        # DEBUG LOG: LLM'e giden nihai görüntü
+        logger.info("=" * 80)
+        logger.info("SENDING TO LLM")
+        logger.info("=" * 80)
+        logger.info("Test step: %s", test_step)
+        logger.info("Expected result: %s", expected_result)
+        logger.info("Note to LLM: %s", note_to_llm)
+        logger.info("=" * 80)
+        logger.info("Current View:\n%s", llm_view)
+        logger.info("=" * 80)
+        
+        payload = {"test_step": test_step, "expected_result": expected_result, "current_state": llm_view, "note_to_llm": note_to_llm}
         
         if recent_actions:
             payload["recent_actions"] = recent_actions[-2:]
         
-        if schema_hint:
-            payload["backend_guidance"] = schema_hint
-        
-        if note_to_llm:
-            payload["note_to_llm"] = note_to_llm
-        
         if attempt_number > 1:
-            payload["retry_context"] = {
-                "attempt": attempt_number,
-                "detection_method": "ODS",
-                "message": f"Retry attempt {attempt_number} using ODS detection",
-            }
-        else:
-            payload["retry_context"] = {
-                "attempt": 1,
-                "detection_method": "WinDriver",
-                "message": "First attempt using WinDriver detection",
-            }
+            payload["retry_context"] = {"attempt": attempt_number, "method": "ODS"}
         
-        user_content = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
-        
-        return [
+        messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": f"<JSON_ONLY>{user_content}</JSON_ONLY>"},
+            {"role": "user", "content": json.dumps(payload)}
         ]
+        
+        return messages, llm_view
     
-    # ========================================================================
-    # PLAN PARSING
-    # ========================================================================
-    
-    def _parse_plan(self, content: str) -> Dict[str, Any]:
-        """Parse LLM response"""
-        stripped = self._strip_wrappers(content).strip()
-        if not stripped:
-            raise PlanParseError("Empty plan")
+    def _parse_plan(self, content: str) -> Dict:
+        # DEBUG LOG: Raw LLM response
+        logger.info("=" * 80)
+        logger.info("📥 RECEIVED FROM LLM")
+        logger.info("=" * 80)
+        if len(content) > 1500:
+            logger.info("%s\n... (truncated, %d total chars)", content[:1500], len(content))
+        else:
+            logger.info("%s", content)
+        logger.info("=" * 80)
+        
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip(), flags=re.IGNORECASE)
         
         try:
-            plan = json.loads(stripped)
-        except json.JSONDecodeError as exc:
-            raise PlanParseError(f"Invalid JSON: {exc}") from exc
+            plan = json.loads(text)
+        except Exception as e:
+            logger.error("❌ JSON PARSE ERROR: %s", str(e))
+            logger.error("Cleaned text was: %s", text[:500])
+            raise PlanParseError("Invalid JSON")
         
-        if not isinstance(plan, dict):
-            raise PlanParseError("Plan must be dict")
-        
-        if "steps" not in plan or not isinstance(plan.get("steps"), list):
+        if "steps" not in plan:
             plan["steps"] = []
-            plan["_backend_steps_substituted"] = True
-        
         if "action_id" not in plan:
-            plan["action_id"] = f"step_{int(time.time() * 1000)}"
+            plan["action_id"] = f"step_{int(time.time())}"
         if "coords_space" not in plan:
             plan["coords_space"] = "physical"
         
+        # DEBUG LOG: Parsed plan
+        logger.info("=" * 80)
+        logger.info("PARSED PLAN")
+        logger.info("=" * 80)
+        logger.info("Action ID: %s", plan.get("action_id"))
+        logger.info("Reasoning: %s", plan.get("reasoning", "N/A"))
+        logger.info("Steps: %d", len(plan.get("steps", [])))
+        for idx, step in enumerate(plan.get("steps", []), 1):
+            step_type = step.get("type", "unknown")
+            if step_type == "click":
+                pt = step.get("target", {}).get("point", {})
+                logger.info("  %d. Click at (%d, %d)", idx, pt.get("x", -1), pt.get("y", -1))
+            elif step_type == "type":
+                logger.info("  %d. Type: '%s'", idx, step.get("text", ""))
+            elif step_type == "key_combo":
+                logger.info("  %d. Key combo: %s", idx, "+".join(step.get("combo", [])))
+            elif step_type == "drag":
+                logger.info("  %d. Drag from (%d,%d) to (%d,%d)", idx,
+                          step.get("from", {}).get("x", -1), step.get("from", {}).get("y", -1),
+                          step.get("to", {}).get("x", -1), step.get("to", {}).get("y", -1))
+            elif step_type == "scroll":
+                logger.info("  %d. Scroll delta=%d", idx, step.get("delta", 0))
+            elif step_type == "wait":
+                logger.info("  %d. Wait %dms", idx, step.get("ms", 0))
+            else:
+                logger.info("  %d. %s", idx, step_type)
+        logger.info("=" * 80)
+        
         return plan
     
-    def _strip_wrappers(self, text: str) -> str:
-        """Strip markdown and prefixes"""
-        text = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.IGNORECASE)
-        text = re.sub(r"\s*```$", "", text.strip())
-        return text
-    
-    # ========================================================================
-    # VALIDATION
-    # ========================================================================
-    
-    def _validate_plan_against_screen(self, plan: Dict[str, Any], state: Dict[str, Any]) -> Optional[str]:
-        """Validate plan coordinates"""
-        screen = state.get("screen") or {}
-        sw, sh = screen.get("w"), screen.get("h")
-        if not isinstance(sw, int) or not isinstance(sh, int) or sw <= 0 or sh <= 0:
-            return None
-        
-        def in_bounds(x: float, y: float) -> bool:
-            return 0 <= x < sw and 0 <= y < sh
+    def _validate_plan_against_screen(self, plan: Dict, state: Dict) -> Optional[str]:
+        screen = state.get("screen", {})
+        sw, sh = screen.get("w", 0), screen.get("h", 0)
+        if sw <= 0 or sh <= 0: return None
         
         for idx, step in enumerate(plan.get("steps", [])):
-            t = step.get("type")
-            if t == "click":
-                point = step.get("target", {}).get("point")
-                if not point:
-                    return f"step[{idx}] CLICK missing point"
-                px, py = point.get("x"), point.get("y")
-                if not in_bounds(px, py):
-                    return f"step[{idx}] CLICK ({px},{py}) outside screen"
-        
+            if step.get("type") == "click":
+                pt = step.get("target", {}).get("point", {})
+                x, y = pt.get("x", -1), pt.get("y", -1)
+                if not (0 <= x < sw and 0 <= y < sh):
+                    return f"step[{idx}] out of bounds"
         return None
     
-    # ========================================================================
-    # UTILITIES
-    # ========================================================================
+    def _summarise_for_prompt(self, entry: ActionExecutionLog) -> Dict:
+        return {"action_id": entry.action_id, "steps_count": len(entry.plan.get("steps", [])), "status": entry.ack.get("status")}
     
-    def _summarise_for_prompt(self, entry: ActionExecutionLog) -> Dict[str, Any]:
-        """Summarize action for prompt"""
-        return {
-            "action_id": entry.action_id,
-            "steps_count": len(entry.plan.get("steps", [])),
-            "ack_status": entry.ack.get("status"),
-            "timestamp": entry.timestamp,
-        }
-
 # ============================================================================
-# EXPORTS
+# RAW ODS BACKEND (FOR DEMONSTRATION / COMPARISON ONLY)
+# Purpose: To show how the LLM fails or struggles without semantic filtering,
+#          WinDriver hybrid fetch, and pre-checks.
 # ============================================================================
 
-__all__ = [
-    "LLMBackend",
-    "StepDefinition",
-    "ScenarioResult",
-    "ScenarioStepOutcome",
-    "RunResult",
-    "ActionExecutionLog",
-    "BackendError",
-    "PlanParseError",
-    "SUTCommunicationError",
-    "LLMCommunicationError",
-    "AGEN_TEST_PLAN_SCHEMA",
-    "SYSTEM_PROMPT",
-]
+class RawODSBackend(LLMBackend):
+    """
+    A 'Naive' implementation that strictly fetches from ODS and sends 
+    the raw (unfiltered) element list to the LLM.
+    Used to demonstrate the value of the optimizations in the main LLMBackend.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 🚫 CRITICAL: Disable the "Smart" features
+        self._use_semantic_filter = False 
+        self.max_attempts = 1
+    
+    async def _fetch_state(self, attempt: int = 1) -> Dict:
+        """Override to ALWAYS use ODS URL, ignoring attempt number/logic."""
+        # Force ODS URL
+        url = self.state_url_ods
+        logger.info("📸 Fetching RAW State from ODS: %s", url)
+        
+        async with httpx.AsyncClient(timeout=self.sut_timeout) as client:
+            resp = await client.post(url, json={})
+            resp.raise_for_status()
+            return resp.json()
+
+    async def run_step(self, test_step: str, expected_result: str, note_to_llm: Optional[str] = None, *, recent_actions=None, temperature=0.1) -> RunResult:
+        """
+        Simplified execution flow:
+        1. Fetch ODS State
+        2. Send ALL elements to LLM (No Filter)
+        3. Execute Action
+        4. Validate
+        (No retries, no WinDriver fallbacks, no Pre-checks)
+        """
+        actions_log = []
+        state = {}
+        
+        logger.warning("⚠️ RUNNING IN RAW ODS MODE (Benchmark Mode) ⚠️")
+        logger.warning("   - No WinDriver Fallback")
+        logger.warning("   - No Semantic Filtering")
+        logger.warning("   - No Pre-checks")
+
+        # 1. Fetch State (ODS Only)
+        try:
+            state = await self._fetch_state()
+        except Exception as e:
+            logger.error("ODS Fetch Failed: %s", e)
+            return RunResult("failed", 1, [], {}, None, f"ODS Error: {e}")
+
+        # 2. Plan (Base class will see self._use_semantic_filter=False and send everything)
+        try:
+            plan, llm_view = await self._request_plan(
+                test_step=test_step, 
+                expected_result=expected_result, 
+                note_to_llm=note_to_llm, 
+                state=state, 
+                recent_actions=recent_actions or [], 
+                temperature=temperature, 
+                attempt_number=1
+            )
+        except Exception as e:
+            logger.error("Planning Failed: %s", e)
+            return RunResult("failed", 1, [], state, None, f"LLM Error: {e}")
+
+        # Check if plan is empty
+        steps = plan.get("steps", [])
+        if not steps:
+            return RunResult("failed", 1, actions_log, state, plan, "LLM returned no actions")
+
+        # 3. Execute
+        state_before = state  # Keep original state for validation
+        try:
+            ack = await self._send_action(plan)
+        except Exception as e:
+            logger.error("Action Execution Failed: %s", e)
+            return RunResult("failed", 1, [], state, plan, f"Action Error: {e}")
+
+        # 4. Fetch Result State (For validation)
+        final_state = await self._fetch_state_safe(state, 1)
+        
+        # Add llm_view to state_before copy for UI display only
+        state_before_with_llm = {**state_before, "llm_view": llm_view}
+        log = ActionExecutionLog(plan.get("action_id", ""), plan, ack, state_before_with_llm, final_state)
+        actions_log.append(log)
+
+        # 5. Validate using original state_before (without llm_view)
+        if self._expected_holds(final_state, expected_result, plan, state_before, test_step):
+            logger.info("✓ RAW MODE SUCCESS (Surprisingly!)")
+            return RunResult("passed", 1, actions_log, final_state, plan, "Success (Raw ODS)")
+        
+        logger.info("✗ RAW MODE FAILED (As expected?)")
+        return RunResult("failed", 1, actions_log, final_state, plan, "Validation Failed")

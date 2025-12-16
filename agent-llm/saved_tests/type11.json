@@ -1,0 +1,2789 @@
+{
+  "action_id": "replay_type11_1765874843",
+  "coords_space": "physical",
+  "steps": [
+    {
+      "type": "click",
+      "target": {
+        "point": {
+          "x": 1041,
+          "y": 359
+        }
+      },
+      "enter": false
+    },
+    {
+      "type": "type",
+      "text": "agentest",
+      "enter": false
+    },
+    {
+      "type": "wait",
+      "ms": 500
+    },
+    {
+      "type": "click",
+      "target": {
+        "point": {
+          "x": 960,
+          "y": 628
+        }
+      },
+      "enter": false
+    },
+    {
+      "type": "wait",
+      "ms": 500
+    },
+    {
+      "type": "click",
+      "target": {
+        "point": {
+          "x": 959,
+          "y": 473
+        }
+      },
+      "enter": false
+    },
+    {
+      "type": "type",
+      "text": "tested",
+      "enter": false
+    }
+  ],
+  "step_definitions": [
+    {
+      "test_step": "Type 'agentest' in area next to Name",
+      "expected_result": "'agentest' is visible",
+      "note_to_llm": "Click 'checkbox' or 'blank space' before typing"
+    },
+    {
+      "test_step": "Type 'tested' in area under Description",
+      "expected_result": "'tested' is visible",
+      "note_to_llm": "Click 'maximize window' before typing"
+    }
+  ],
+  "execution_result": [
+    {
+      "step": {
+        "test_step": "Type 'agentest' in area next to Name",
+        "expected_result": "'agentest' is visible",
+        "note_to_llm": "Click 'checkbox' or 'blank space' before typing"
+      },
+      "result": {
+        "status": "passed",
+        "attempts": 2,
+        "reason": "Success (ODS)",
+        "actions": [
+          {
+            "action_id": "step_1",
+            "plan": {
+              "reasoning": "The user wants to type 'agentest' in the area next to the 'Name' label. The closest element to the right of 'Name' is a checkbox at (1041,359). We need to click on this checkbox or blank space first before typing the text.",
+              "action_id": "step_1",
+              "coords_space": "physical",
+              "steps": [
+                {
+                  "type": "click",
+                  "target": {
+                    "point": {
+                      "x": 1041,
+                      "y": 359
+                    }
+                  },
+                  "enter": false
+                },
+                {
+                  "type": "type",
+                  "text": "agentest",
+                  "enter": false
+                }
+              ]
+            },
+            "ack": {
+              "action_id": "step_1",
+              "applied": 2,
+              "status": "ok",
+              "timestamp": 1765874817686
+            },
+            "state_before": {
+              "elements": [
+                {
+                  "name": "@ FIVE",
+                  "type": "text",
+                  "center": {
+                    "x": 24.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Forces in Virtua",
+                  "type": "text",
+                  "center": {
+                    "x": 96.0,
+                    "y": 13.0
+                  }
+                },
+                {
+                  "name": "Environment",
+                  "type": "text",
+                  "center": {
+                    "x": 179.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Vk s",
+                  "type": "text",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 959.0
+                  }
+                },
+                {
+                  "name": "15 t0 a670",
+                  "type": "text",
+                  "center": {
+                    "x": 1712.0,
+                    "y": 982.0
+                  }
+                },
+                {
+                  "name": "Altitude 2423628@Elevatiod 280",
+                  "type": "text",
+                  "center": {
+                    "x": 196.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "0 ( tx",
+                  "type": "text",
+                  "center": {
+                    "x": 1731.0,
+                    "y": 1062.0
+                  }
+                },
+                {
+                  "name": "16.12.202511.27.08",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 389.0
+                  }
+                },
+                {
+                  "name": "cogdoooo",
+                  "type": "icon",
+                  "center": {
+                    "x": 49.0,
+                    "y": 972.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 957.0,
+                    "y": 797.0
+                  }
+                },
+                {
+                  "name": "TUR",
+                  "type": "icon",
+                  "center": {
+                    "x": 1782.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Type here to search",
+                  "type": "icon",
+                  "center": {
+                    "x": 173.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Meter",
+                  "type": "icon",
+                  "center": {
+                    "x": 50.0,
+                    "y": 999.0
+                  }
+                },
+                {
+                  "name": "11:46 16.12.2025",
+                  "type": "icon",
+                  "center": {
+                    "x": 1834.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 829.0,
+                    "y": 287.0
+                  }
+                },
+                {
+                  "name": "SCENARIO MANAGEMENT",
+                  "type": "icon",
+                  "center": {
+                    "x": 947.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "View",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Help",
+                  "type": "icon",
+                  "center": {
+                    "x": 308.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Center 29906.24760,022716.3654E",
+                  "type": "icon",
+                  "center": {
+                    "x": 198.0,
+                    "y": 974.0
+                  }
+                },
+                {
+                  "name": "Map",
+                  "type": "icon",
+                  "center": {
+                    "x": 219.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "icon",
+                  "center": {
+                    "x": 871.0,
+                    "y": 391.0
+                  }
+                },
+                {
+                  "name": "Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Debriefing",
+                  "type": "icon",
+                  "center": {
+                    "x": 113.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Tools",
+                  "type": "icon",
+                  "center": {
+                    "x": 264.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "294848,0M 18728334",
+                  "type": "icon",
+                  "center": {
+                    "x": 1833.0,
+                    "y": 978.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "icon",
+                  "center": {
+                    "x": 956.0,
+                    "y": 322.0
+                  }
+                },
+                {
+                  "name": "Name",
+                  "type": "icon",
+                  "center": {
+                    "x": 873.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "s90p3",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 946.0
+                  }
+                },
+                {
+                  "name": "Cur3or 40*1404280,027*54.5581E",
+                  "type": "icon",
+                  "center": {
+                    "x": 182.0,
+                    "y": 947.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "icon",
+                  "center": {
+                    "x": 843.0,
+                    "y": 430.0
+                  }
+                },
+                {
+                  "name": "Description",
+                  "type": "icon",
+                  "center": {
+                    "x": 958.0,
+                    "y": 473.0
+                  }
+                },
+                {
+                  "name": "Maximize window",
+                  "type": "icon",
+                  "center": {
+                    "x": 959.0,
+                    "y": 628.0
+                  }
+                },
+                {
+                  "name": "A checkbox for selecting a new item or option.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1041.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "accessing a move or move up and down.",
+                  "type": "icon",
+                  "center": {
+                    "x": 883.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "the Windows operating system.",
+                  "type": "icon",
+                  "center": {
+                    "x": 23.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 804.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "a grid or grid view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1003.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "Delete or trash.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1034.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Brush.",
+                  "type": "icon",
+                  "center": {
+                    "x": 974.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Microsoft 365",
+                  "type": "icon",
+                  "center": {
+                    "x": 362.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Handprint authentication.",
+                  "type": "icon",
+                  "center": {
+                    "x": 913.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Home",
+                  "type": "icon",
+                  "center": {
+                    "x": 607.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "A web browser or web browser application.",
+                  "type": "icon",
+                  "center": {
+                    "x": 943.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 755.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Scanning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1899.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 35.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Google Chrome",
+                  "type": "icon",
+                  "center": {
+                    "x": 655.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Movies & TV",
+                  "type": "icon",
+                  "center": {
+                    "x": 410.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "A painting or painting tool.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1793.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Add",
+                  "type": "icon",
+                  "center": {
+                    "x": 1567.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Step",
+                  "type": "icon",
+                  "center": {
+                    "x": 73.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Bookmark",
+                  "type": "icon",
+                  "center": {
+                    "x": 1853.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "TikTok",
+                  "type": "icon",
+                  "center": {
+                    "x": 1604.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1133.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "Adding a new item or creating a new document.",
+                  "type": "icon",
+                  "center": {
+                    "x": 315.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Pinning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Account",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 74.0
+                  }
+                },
+                {
+                  "name": "Image",
+                  "type": "icon",
+                  "center": {
+                    "x": 559.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1680.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 461.0,
+                    "y": 1057.0
+                  }
+                },
+                {
+                  "name": "Properties",
+                  "type": "icon",
+                  "center": {
+                    "x": 1100.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1895.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Toggle",
+                  "type": "icon",
+                  "center": {
+                    "x": 1705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Copy",
+                  "type": "icon",
+                  "center": {
+                    "x": 1849.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "WiFi",
+                  "type": "icon",
+                  "center": {
+                    "x": 1742.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Outlook",
+                  "type": "icon",
+                  "center": {
+                    "x": 510.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Squares",
+                  "type": "icon",
+                  "center": {
+                    "x": 705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "a stopwatch function.",
+                  "type": "icon",
+                  "center": {
+                    "x": 5.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "a battery level indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1156.0,
+                    "y": 401.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 42.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 950.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 41.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1715.0,
+                    "y": 40.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1891.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "Navigation.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1795.0,
+                    "y": 911.0
+                  }
+                },
+                {
+                  "name": "A map or map-related feature.",
+                  "type": "icon",
+                  "center": {
+                    "x": 946.0,
+                    "y": 193.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 901.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "a beach or ocean view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 852.0,
+                    "y": 1077.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1754.0,
+                    "y": 43.0
+                  }
+                }
+              ],
+              "llm_view": "ID | Name | Type | (x,y)\n------------------------------------------------------------\n1 | Scenario Details | icon | (956.0,322.0)\n2 | Name | icon | (873.0,359.0)\n3 | A checkbox for selecting a new item or o | icon | (1041.0,359.0)\n4 | 16.12.202511.27.08 | icon | (1040.0,389.0)\n5 | Scenario Start Date | icon | (871.0,391.0)\n6 | Training Areas | icon | (843.0,430.0)",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 81
+            },
+            "state_after": {
+              "elements": [
+                {
+                  "name": "Vk s",
+                  "type": "text",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 959.0
+                  }
+                },
+                {
+                  "name": "15 t0 a670",
+                  "type": "text",
+                  "center": {
+                    "x": 1712.0,
+                    "y": 982.0
+                  }
+                },
+                {
+                  "name": "Altitude 2423628W Elevatiod 21080",
+                  "type": "text",
+                  "center": {
+                    "x": 203.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "0 ( tx",
+                  "type": "text",
+                  "center": {
+                    "x": 1731.0,
+                    "y": 1062.0
+                  }
+                },
+                {
+                  "name": "16.12.202511.27.08",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 389.0
+                  }
+                },
+                {
+                  "name": "agentest",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "cogdoooo",
+                  "type": "icon",
+                  "center": {
+                    "x": 49.0,
+                    "y": 972.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 956.0,
+                    "y": 797.0
+                  }
+                },
+                {
+                  "name": "TUR",
+                  "type": "icon",
+                  "center": {
+                    "x": 1782.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Type here to search",
+                  "type": "icon",
+                  "center": {
+                    "x": 172.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Meter",
+                  "type": "icon",
+                  "center": {
+                    "x": 50.0,
+                    "y": 999.0
+                  }
+                },
+                {
+                  "name": "11:46 16.12.2025",
+                  "type": "icon",
+                  "center": {
+                    "x": 1834.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 830.0,
+                    "y": 287.0
+                  }
+                },
+                {
+                  "name": "SCENARIO MANAGEMENT",
+                  "type": "icon",
+                  "center": {
+                    "x": 947.0,
+                    "y": 251.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "icon",
+                  "center": {
+                    "x": 872.0,
+                    "y": 390.0
+                  }
+                },
+                {
+                  "name": "Help",
+                  "type": "icon",
+                  "center": {
+                    "x": 308.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Name",
+                  "type": "icon",
+                  "center": {
+                    "x": 873.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "Center 29906.24760,022716.3654E",
+                  "type": "icon",
+                  "center": {
+                    "x": 198.0,
+                    "y": 974.0
+                  }
+                },
+                {
+                  "name": "View",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Map",
+                  "type": "icon",
+                  "center": {
+                    "x": 219.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Tools",
+                  "type": "icon",
+                  "center": {
+                    "x": 264.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "294848,0M 18728334",
+                  "type": "icon",
+                  "center": {
+                    "x": 1833.0,
+                    "y": 978.0
+                  }
+                },
+                {
+                  "name": "Debriefing",
+                  "type": "icon",
+                  "center": {
+                    "x": 113.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "icon",
+                  "center": {
+                    "x": 957.0,
+                    "y": 323.0
+                  }
+                },
+                {
+                  "name": "Qur3or 4P2740560,042*40.8851E",
+                  "type": "icon",
+                  "center": {
+                    "x": 182.0,
+                    "y": 947.0
+                  }
+                },
+                {
+                  "name": "Description",
+                  "type": "icon",
+                  "center": {
+                    "x": 959.0,
+                    "y": 473.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "icon",
+                  "center": {
+                    "x": 842.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "s00p3",
+                  "type": "icon",
+                  "center": {
+                    "x": 42.0,
+                    "y": 945.0
+                  }
+                },
+                {
+                  "name": "@ FIVE Forces in Virtua Environment",
+                  "type": "icon",
+                  "center": {
+                    "x": 112.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Maximize window",
+                  "type": "icon",
+                  "center": {
+                    "x": 960.0,
+                    "y": 628.0
+                  }
+                },
+                {
+                  "name": "accessing a move or move up and down.",
+                  "type": "icon",
+                  "center": {
+                    "x": 883.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "the Windows operating system.",
+                  "type": "icon",
+                  "center": {
+                    "x": 23.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 804.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "a grid or grid view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1003.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "Delete or trash.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1034.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Microsoft 365",
+                  "type": "icon",
+                  "center": {
+                    "x": 362.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Brush.",
+                  "type": "icon",
+                  "center": {
+                    "x": 974.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Handprint authentication.",
+                  "type": "icon",
+                  "center": {
+                    "x": 913.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "A web browser or web browser application.",
+                  "type": "icon",
+                  "center": {
+                    "x": 943.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Home",
+                  "type": "icon",
+                  "center": {
+                    "x": 607.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Scanning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1899.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 755.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Google Chrome",
+                  "type": "icon",
+                  "center": {
+                    "x": 655.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 35.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Add",
+                  "type": "icon",
+                  "center": {
+                    "x": 1567.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Movies & TV",
+                  "type": "icon",
+                  "center": {
+                    "x": 410.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "A painting or painting tool.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1794.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1133.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Bookmark",
+                  "type": "icon",
+                  "center": {
+                    "x": 1853.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Toggleoggleoggle settings",
+                  "type": "icon",
+                  "center": {
+                    "x": 1604.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Step",
+                  "type": "icon",
+                  "center": {
+                    "x": 74.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Adding a new item or creating a new document.",
+                  "type": "icon",
+                  "center": {
+                    "x": 315.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Signature",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 74.0
+                  }
+                },
+                {
+                  "name": "Pinning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Image",
+                  "type": "icon",
+                  "center": {
+                    "x": 559.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1680.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Properties",
+                  "type": "icon",
+                  "center": {
+                    "x": 1100.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 461.0,
+                    "y": 1057.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1895.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Copy",
+                  "type": "icon",
+                  "center": {
+                    "x": 1850.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Show time and date",
+                  "type": "icon",
+                  "center": {
+                    "x": 1705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "WiFi",
+                  "type": "icon",
+                  "center": {
+                    "x": 1742.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Outlook",
+                  "type": "icon",
+                  "center": {
+                    "x": 510.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Squares",
+                  "type": "icon",
+                  "center": {
+                    "x": 705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "a stopwatch function.",
+                  "type": "icon",
+                  "center": {
+                    "x": 5.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "a battery level indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1156.0,
+                    "y": 401.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1715.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 950.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 43.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1890.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 901.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "Navigation or location indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1795.0,
+                    "y": 911.0
+                  }
+                },
+                {
+                  "name": "a beach or ocean view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 852.0,
+                    "y": 1077.0
+                  }
+                },
+                {
+                  "name": "A map or map-related feature.",
+                  "type": "icon",
+                  "center": {
+                    "x": 946.0,
+                    "y": 192.0
+                  }
+                }
+              ],
+              "llm_view": "Format: (x,y) [Type] Name\n----------------------------------------\n(1716,959) [text] Vk s\n(1712,982) [text] 15 t0 a670\n(203,1001) [text] Altitude 2423628W Elevatiod 21080\n(1731,1062) [text] 0 ( tx\n(1040,389) [icon] 16.12.202511.27.08\n(1040,359) [icon] agentest\n(49,972) [icon] cogdoooo\n(956,797) [icon] Add New Scenario\n(1782,1058) [icon] TUR\n(172,1058) [icon] Type here to search\n(50,999) [icon] Meter\n(1834,1058) [icon] 11:46 16.12.2025\n(830,287) [icon] Tactical Scenario\n(947,251) [icon] SCENARIO MANAGEMENT\n(872,390) [icon] Scenario Start Date\n(308,38) [icon] Help\n(873,359) [icon] Name\n(198,974) [icon] Center 29906.24760,022716.3654E\n(175,38) [icon] View\n(219,38) [icon] Map\n(41,38) [icon] Scenario\n(264,38) [icon] Tools\n(1833,978) [icon] 294848,0M 18728334\n(113,37) [icon] Debriefing\n(957,323) [icon] Scenario Details\n(182,947) [icon] Qur3or 4P2740560,042*40.8851E\n(959,473) [icon] Description\n(842,431) [icon] Training Areas\n(42,945) [icon] s00p3\n(112,11) [icon] @ FIVE Forces in Virtua Environment\n(960,628) [icon] Maximize window\n(883,125) [icon] accessing a move or move up and down.\n(23,1059) [icon] the Windows operating system.\n(804,1059) [icon] Microsoft Excel\n(1003,125) [icon] a grid or grid view.\n(1034,124) [icon] Delete or trash.\n(362,1059) [icon] Microsoft 365\n(974,124) [icon] Brush.\n(913,124) [icon] Handprint authentication.\n(943,124) [icon] A web browser or web browser application.\n(607,1061) [icon] Home\n(1899,75) [icon] Scanning\n(755,1060) [icon] Microsoft Excel\n(655,1061) [icon] Google Chrome\n(35,75) [icon] Increase\n(1567,75) [icon] Add\n(410,1059) [icon] Movies & TV\n(1794,75) [icon] A painting or painting tool.\n(1133,252) [icon] Close\n(1753,75) [icon] Increase\n(1853,75) [icon] Bookmark\n(1604,75) [icon] Toggleoggleoggle settings\n(1716,75) [icon] More Options\n(74,75) [icon] Step\n(315,1060) [icon] Adding a new item or creating a new document.\n(1678,74) [icon] Signature\n(1641,75) [icon] Pinning\n(559,1061) [icon] Image\n(1680,1059) [icon] M0,0L9,0 4.5,5z\n(1100,431) [icon] Properties\n(461,1057) [icon] Microsoft Excel\n(1895,10) [icon] Close\n(1850,10) [icon] Copy\n(1705,1061) [icon] Show time and date\n(1742,1059) [icon] WiFi\n(510,1059) [icon] Microsoft Outlook\n(705,1061) [icon] Squares\n(5,75) [icon] a stopwatch function.\n(1156,401) [icon] a battery level indicator.\n(1678,39) [icon] M0,0L9,0 4.5,5z\n(1641,39) [icon] M0,0L9,0 4.5,5z\n(1715,39) [icon] M0,0L9,0 4.5,5z\n(950,1078) [icon] a loading or buffering indicator.\n(1753,43) [icon] M0,0L9,0 4.5,5z\n(1890,1078) [icon] M0,0L9,0 4.5,5z\n(901,1078) [icon] a loading or buffering indicator.\n(1795,911) [icon] Navigation or location indicator.\n(852,1077) [icon] a beach or ocean view.\n(946,192) [icon] A map or map-related feature.",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 79
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step": {
+        "test_step": "Type 'tested' in area under Description",
+        "expected_result": "'tested' is visible",
+        "note_to_llm": "Click 'maximize window' before typing"
+      },
+      "result": {
+        "status": "passed",
+        "attempts": 2,
+        "reason": "Success (ODS)",
+        "actions": [
+          {
+            "action_id": "step_2",
+            "plan": {
+              "reasoning": "The user wants to type 'tested' in the Description area. The Description icon is located at (959.0,473.0). Before typing, we need to maximize the window by clicking on the maximize window icon at (960.0,628.0).",
+              "action_id": "step_2",
+              "coords_space": "physical",
+              "steps": [
+                {
+                  "type": "click",
+                  "target": {
+                    "point": {
+                      "x": 960,
+                      "y": 628
+                    }
+                  },
+                  "enter": false
+                },
+                {
+                  "type": "wait",
+                  "ms": 500
+                },
+                {
+                  "type": "click",
+                  "target": {
+                    "point": {
+                      "x": 959,
+                      "y": 473
+                    }
+                  },
+                  "enter": false
+                },
+                {
+                  "type": "type",
+                  "text": "tested",
+                  "enter": false
+                }
+              ]
+            },
+            "ack": {
+              "action_id": "step_2",
+              "applied": 4,
+              "status": "ok",
+              "timestamp": 1765874840049
+            },
+            "state_before": {
+              "elements": [
+                {
+                  "name": "Vk s",
+                  "type": "text",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 959.0
+                  }
+                },
+                {
+                  "name": "15 t0 a670",
+                  "type": "text",
+                  "center": {
+                    "x": 1712.0,
+                    "y": 982.0
+                  }
+                },
+                {
+                  "name": "Altitude 2423628W Elevatiod 21080",
+                  "type": "text",
+                  "center": {
+                    "x": 203.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "0 ( tx",
+                  "type": "text",
+                  "center": {
+                    "x": 1731.0,
+                    "y": 1062.0
+                  }
+                },
+                {
+                  "name": "16.12.202511.27.08",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 389.0
+                  }
+                },
+                {
+                  "name": "agentest",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "cogdoooo",
+                  "type": "icon",
+                  "center": {
+                    "x": 49.0,
+                    "y": 972.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 956.0,
+                    "y": 797.0
+                  }
+                },
+                {
+                  "name": "TUR",
+                  "type": "icon",
+                  "center": {
+                    "x": 1782.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Type here to search",
+                  "type": "icon",
+                  "center": {
+                    "x": 172.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "11:47 16.12.2025",
+                  "type": "icon",
+                  "center": {
+                    "x": 1834.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Meter",
+                  "type": "icon",
+                  "center": {
+                    "x": 50.0,
+                    "y": 999.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 830.0,
+                    "y": 287.0
+                  }
+                },
+                {
+                  "name": "SCENARIO MANAGEMENT",
+                  "type": "icon",
+                  "center": {
+                    "x": 947.0,
+                    "y": 251.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "icon",
+                  "center": {
+                    "x": 872.0,
+                    "y": 390.0
+                  }
+                },
+                {
+                  "name": "Help",
+                  "type": "icon",
+                  "center": {
+                    "x": 308.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Name",
+                  "type": "icon",
+                  "center": {
+                    "x": 873.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "Center 29906.24760,022716.3654E",
+                  "type": "icon",
+                  "center": {
+                    "x": 198.0,
+                    "y": 974.0
+                  }
+                },
+                {
+                  "name": "View",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Map",
+                  "type": "icon",
+                  "center": {
+                    "x": 219.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Tools",
+                  "type": "icon",
+                  "center": {
+                    "x": 264.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "294848,0M 18728334",
+                  "type": "icon",
+                  "center": {
+                    "x": 1833.0,
+                    "y": 978.0
+                  }
+                },
+                {
+                  "name": "Debriefing",
+                  "type": "icon",
+                  "center": {
+                    "x": 113.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "s90p3",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 946.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "icon",
+                  "center": {
+                    "x": 957.0,
+                    "y": 323.0
+                  }
+                },
+                {
+                  "name": "Description",
+                  "type": "icon",
+                  "center": {
+                    "x": 959.0,
+                    "y": 473.0
+                  }
+                },
+                {
+                  "name": "Qur3or 4P2740560,042*40.8851E",
+                  "type": "icon",
+                  "center": {
+                    "x": 182.0,
+                    "y": 947.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "icon",
+                  "center": {
+                    "x": 842.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "@ FIVE Forces in Virtua Environment",
+                  "type": "icon",
+                  "center": {
+                    "x": 112.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Maximize window",
+                  "type": "icon",
+                  "center": {
+                    "x": 960.0,
+                    "y": 628.0
+                  }
+                },
+                {
+                  "name": "accessing a move or move up and down.",
+                  "type": "icon",
+                  "center": {
+                    "x": 883.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "the Windows operating system.",
+                  "type": "icon",
+                  "center": {
+                    "x": 23.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 804.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "a grid or grid view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1003.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "Delete or trash.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1034.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Microsoft 365",
+                  "type": "icon",
+                  "center": {
+                    "x": 362.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Brush.",
+                  "type": "icon",
+                  "center": {
+                    "x": 974.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Handprint authentication.",
+                  "type": "icon",
+                  "center": {
+                    "x": 913.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "A web browser or web browser application.",
+                  "type": "icon",
+                  "center": {
+                    "x": 943.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Home",
+                  "type": "icon",
+                  "center": {
+                    "x": 607.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Scanning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1899.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 755.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Google Chrome",
+                  "type": "icon",
+                  "center": {
+                    "x": 655.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 35.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Add",
+                  "type": "icon",
+                  "center": {
+                    "x": 1567.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Movies & TV",
+                  "type": "icon",
+                  "center": {
+                    "x": 410.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "A painting or painting tool.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1794.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1133.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Bookmark",
+                  "type": "icon",
+                  "center": {
+                    "x": 1853.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Toggleoggleoggle settings",
+                  "type": "icon",
+                  "center": {
+                    "x": 1604.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Step",
+                  "type": "icon",
+                  "center": {
+                    "x": 74.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Adding a new item or creating a new document.",
+                  "type": "icon",
+                  "center": {
+                    "x": 315.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Signature",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 74.0
+                  }
+                },
+                {
+                  "name": "Pinning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Image",
+                  "type": "icon",
+                  "center": {
+                    "x": 559.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1680.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Properties",
+                  "type": "icon",
+                  "center": {
+                    "x": 1100.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 461.0,
+                    "y": 1057.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1895.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Copy",
+                  "type": "icon",
+                  "center": {
+                    "x": 1850.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Show time and date",
+                  "type": "icon",
+                  "center": {
+                    "x": 1705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "WiFi",
+                  "type": "icon",
+                  "center": {
+                    "x": 1742.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Outlook",
+                  "type": "icon",
+                  "center": {
+                    "x": 510.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Squares",
+                  "type": "icon",
+                  "center": {
+                    "x": 705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "a stopwatch function.",
+                  "type": "icon",
+                  "center": {
+                    "x": 5.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "a battery level indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1156.0,
+                    "y": 401.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1715.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 950.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 43.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1890.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 901.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "Navigation or location indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1795.0,
+                    "y": 911.0
+                  }
+                },
+                {
+                  "name": "a beach or ocean view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 852.0,
+                    "y": 1077.0
+                  }
+                },
+                {
+                  "name": "A map or map-related feature.",
+                  "type": "icon",
+                  "center": {
+                    "x": 946.0,
+                    "y": 192.0
+                  }
+                }
+              ],
+              "llm_view": "ID | Name | Type | (x,y)\n------------------------------------------------------------\n1 | Training Areas | icon | (842.0,431.0)\n2 | Description | icon | (959.0,473.0)\n3 | Maximize window | icon | (960.0,628.0)\n4 | the Windows operating system. | icon | (23.0,1059.0)",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 79
+            },
+            "state_after": {
+              "elements": [
+                {
+                  "name": "@ FIVE",
+                  "type": "text",
+                  "center": {
+                    "x": 24.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Forces in Virtua",
+                  "type": "text",
+                  "center": {
+                    "x": 96.0,
+                    "y": 13.0
+                  }
+                },
+                {
+                  "name": "Environment",
+                  "type": "text",
+                  "center": {
+                    "x": 179.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Description",
+                  "type": "text",
+                  "center": {
+                    "x": 959.0,
+                    "y": 476.0
+                  }
+                },
+                {
+                  "name": "Vk s",
+                  "type": "text",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 959.0
+                  }
+                },
+                {
+                  "name": "15 t0 a670",
+                  "type": "text",
+                  "center": {
+                    "x": 1712.0,
+                    "y": 982.0
+                  }
+                },
+                {
+                  "name": "Altitude 2423628W Elevatiod 21080",
+                  "type": "text",
+                  "center": {
+                    "x": 203.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "0 ( tx",
+                  "type": "text",
+                  "center": {
+                    "x": 1731.0,
+                    "y": 1062.0
+                  }
+                },
+                {
+                  "name": "16.12.202511.27.08",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 389.0
+                  }
+                },
+                {
+                  "name": "agentest",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "cogdoooo",
+                  "type": "icon",
+                  "center": {
+                    "x": 49.0,
+                    "y": 972.0
+                  }
+                },
+                {
+                  "name": "TUR",
+                  "type": "icon",
+                  "center": {
+                    "x": 1782.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Type here to search",
+                  "type": "icon",
+                  "center": {
+                    "x": 173.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 964.0,
+                    "y": 797.0
+                  }
+                },
+                {
+                  "name": "11:47 16.12.2025",
+                  "type": "icon",
+                  "center": {
+                    "x": 1834.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Meter",
+                  "type": "icon",
+                  "center": {
+                    "x": 50.0,
+                    "y": 999.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 830.0,
+                    "y": 287.0
+                  }
+                },
+                {
+                  "name": "SCENARIO MANAGEMENT",
+                  "type": "icon",
+                  "center": {
+                    "x": 947.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "icon",
+                  "center": {
+                    "x": 874.0,
+                    "y": 390.0
+                  }
+                },
+                {
+                  "name": "Help",
+                  "type": "icon",
+                  "center": {
+                    "x": 308.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "View",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Center 29906.24760,022716.3654E",
+                  "type": "icon",
+                  "center": {
+                    "x": 198.0,
+                    "y": 974.0
+                  }
+                },
+                {
+                  "name": "Name",
+                  "type": "icon",
+                  "center": {
+                    "x": 877.0,
+                    "y": 358.0
+                  }
+                },
+                {
+                  "name": "Map",
+                  "type": "icon",
+                  "center": {
+                    "x": 219.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Tools",
+                  "type": "icon",
+                  "center": {
+                    "x": 264.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "294848,0M 18728334",
+                  "type": "icon",
+                  "center": {
+                    "x": 1833.0,
+                    "y": 978.0
+                  }
+                },
+                {
+                  "name": "Debriefing",
+                  "type": "icon",
+                  "center": {
+                    "x": 113.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "s90p3",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 946.0
+                  }
+                },
+                {
+                  "name": "Qur3or 4P2740560,042*40.8851E",
+                  "type": "icon",
+                  "center": {
+                    "x": 182.0,
+                    "y": 947.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "icon",
+                  "center": {
+                    "x": 957.0,
+                    "y": 323.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "icon",
+                  "center": {
+                    "x": 842.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "testedl",
+                  "type": "icon",
+                  "center": {
+                    "x": 823.0,
+                    "y": 512.0
+                  }
+                },
+                {
+                  "name": "accessing a move or move up and down.",
+                  "type": "icon",
+                  "center": {
+                    "x": 883.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "the Windows operating system.",
+                  "type": "icon",
+                  "center": {
+                    "x": 23.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 804.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "a grid or grid view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1003.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Delete or trash.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1034.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Brush.",
+                  "type": "icon",
+                  "center": {
+                    "x": 974.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Microsoft 365",
+                  "type": "icon",
+                  "center": {
+                    "x": 362.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Handprint authentication.",
+                  "type": "icon",
+                  "center": {
+                    "x": 913.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "A web browser or web browser application.",
+                  "type": "icon",
+                  "center": {
+                    "x": 943.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Home",
+                  "type": "icon",
+                  "center": {
+                    "x": 607.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Scanning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1899.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 755.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Add",
+                  "type": "icon",
+                  "center": {
+                    "x": 1567.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Movies & TV",
+                  "type": "icon",
+                  "center": {
+                    "x": 410.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 35.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Google Chrome",
+                  "type": "icon",
+                  "center": {
+                    "x": 655.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "A painting or painting tool.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1794.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Bookmark",
+                  "type": "icon",
+                  "center": {
+                    "x": 1853.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Toggleoggleoggle settings",
+                  "type": "icon",
+                  "center": {
+                    "x": 1604.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Step",
+                  "type": "icon",
+                  "center": {
+                    "x": 73.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Adding a new item or creating a new document.",
+                  "type": "icon",
+                  "center": {
+                    "x": 315.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1133.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "Signature",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 74.0
+                  }
+                },
+                {
+                  "name": "Pinning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Image",
+                  "type": "icon",
+                  "center": {
+                    "x": 559.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1680.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1895.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 461.0,
+                    "y": 1057.0
+                  }
+                },
+                {
+                  "name": "Properties",
+                  "type": "icon",
+                  "center": {
+                    "x": 1100.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Copy",
+                  "type": "icon",
+                  "center": {
+                    "x": 1850.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Show time and date",
+                  "type": "icon",
+                  "center": {
+                    "x": 1705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "WiFi",
+                  "type": "icon",
+                  "center": {
+                    "x": 1742.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Outlook",
+                  "type": "icon",
+                  "center": {
+                    "x": 510.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Squares",
+                  "type": "icon",
+                  "center": {
+                    "x": 705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "a stopwatch function.",
+                  "type": "icon",
+                  "center": {
+                    "x": 5.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "a battery level indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1156.0,
+                    "y": 401.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1715.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 959.0,
+                    "y": 750.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 950.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 43.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 901.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1891.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "a beach or ocean view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 852.0,
+                    "y": 1077.0
+                  }
+                },
+                {
+                  "name": "Navigation",
+                  "type": "icon",
+                  "center": {
+                    "x": 1795.0,
+                    "y": 912.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1566.0,
+                    "y": 43.0
+                  }
+                }
+              ],
+              "llm_view": "Format: (x,y) [Type] Name\n----------------------------------------\n(24,11) [text] @ FIVE\n(96,13) [text] Forces in Virtua\n(179,11) [text] Environment\n(959,476) [text] Description\n(1716,959) [text] Vk s\n(1712,982) [text] 15 t0 a670\n(203,1001) [text] Altitude 2423628W Elevatiod 21080\n(1731,1062) [text] 0 ( tx\n(1040,389) [icon] 16.12.202511.27.08\n(1040,359) [icon] agentest\n(49,972) [icon] cogdoooo\n(1782,1058) [icon] TUR\n(173,1058) [icon] Type here to search\n(964,797) [icon] Add New Scenario\n(1834,1058) [icon] 11:47 16.12.2025\n(50,999) [icon] Meter\n(830,287) [icon] Tactical Scenario\n(947,252) [icon] SCENARIO MANAGEMENT\n(874,390) [icon] Scenario Start Date\n(308,37) [icon] Help\n(175,38) [icon] View\n(198,974) [icon] Center 29906.24760,022716.3654E\n(877,358) [icon] Name\n(219,38) [icon] Map\n(41,38) [icon] Scenario\n(264,38) [icon] Tools\n(1833,978) [icon] 294848,0M 18728334\n(113,37) [icon] Debriefing\n(41,946) [icon] s90p3\n(182,947) [icon] Qur3or 4P2740560,042*40.8851E\n(957,323) [icon] Scenario Details\n(842,431) [icon] Training Areas\n(823,512) [icon] testedl\n(883,125) [icon] accessing a move or move up and down.\n(23,1059) [icon] the Windows operating system.\n(804,1059) [icon] Microsoft Excel\n(1003,124) [icon] a grid or grid view.\n(1034,124) [icon] Delete or trash.\n(974,124) [icon] Brush.\n(362,1059) [icon] Microsoft 365\n(913,124) [icon] Handprint authentication.\n(943,124) [icon] A web browser or web browser application.\n(607,1061) [icon] Home\n(1899,75) [icon] Scanning\n(755,1060) [icon] Microsoft Excel\n(1567,75) [icon] Add\n(410,1059) [icon] Movies & TV\n(35,75) [icon] Increase\n(655,1061) [icon] Google Chrome\n(1794,75) [icon] A painting or painting tool.\n(1753,75) [icon] Increase\n(1853,75) [icon] Bookmark\n(1604,75) [icon] Toggleoggleoggle settings\n(1716,75) [icon] More Options\n(73,75) [icon] Step\n(315,1060) [icon] Adding a new item or creating a new document.\n(1133,252) [icon] Close\n(1678,74) [icon] Signature\n(1641,75) [icon] Pinning\n(559,1061) [icon] Image\n(1680,1059) [icon] M0,0L9,0 4.5,5z\n(1895,11) [icon] Close\n(461,1057) [icon] Microsoft Excel\n(1100,431) [icon] Properties\n(1850,10) [icon] Copy\n(1705,1061) [icon] Show time and date\n(1742,1059) [icon] WiFi\n(510,1059) [icon] Microsoft Outlook\n(705,1061) [icon] Squares\n(5,75) [icon] a stopwatch function.\n(1156,401) [icon] a battery level indicator.\n(1678,39) [icon] M0,0L9,0 4.5,5z\n(1641,39) [icon] M0,0L9,0 4.5,5z\n(1715,39) [icon] M0,0L9,0 4.5,5z\n(959,750) [icon] M0,0L9,0 4.5,5z\n(950,1078) [icon] a loading or buffering indicator.\n(1753,43) [icon] M0,0L9,0 4.5,5z\n(901,1078) [icon] a loading or buffering indicator.\n(1891,1078) [icon] M0,0L9,0 4.5,5z\n(852,1077) [icon] a beach or ocean view.\n(1795,912) [icon] Navigation\n(1566,43) [icon] M0,0L9,0 4.5,5z",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 82
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "execution_duration": 44.62
+}

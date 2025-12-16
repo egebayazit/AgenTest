@@ -424,12 +424,23 @@ async def _call_ods_with_base64(b64: str) -> Dict[str, Any]:
     """Send base64 screenshot to ODS"""
     if not ODS_URL: return {}
     try:
+        t_start = time.time()
+        print(f"[ODS] Starting request... b64_size={len(b64)} bytes")
+        
         async with httpx.AsyncClient(timeout=_ods_timeout(), trust_env=False, follow_redirects=True) as client:
+            t_before_post = time.time()
             r = await client.post(ODS_URL, json={"base64_image": b64})
+            t_after_post = time.time()
             r.raise_for_status()
-            return r.json()
+            
+            result = r.json()
+            t_end = time.time()
+            
+            print(f"[ODS] Complete in {t_end - t_start:.2f}s: network={t_after_post - t_before_post:.2f}s, parse={t_end - t_after_post:.2f}s")
+            return result
     except Exception as e:
         app.state.last_ods_error = {"msg": str(e), "url": ODS_URL}
+        print(f"[ODS] Error after {time.time() - t_start:.2f}s: {e}")
         raise
 
 def _elements_from_ods_response(ods_raw: dict, screen: dict) -> list[dict]:
@@ -600,7 +611,12 @@ async def state_for_llm():
 @app.post("/state/from-ods")
 async def state_from_ods():
     """ODS path (Visual Model) with Error Handling & Dedupe"""
+    t_endpoint_start = time.time()
+    print(f"[/state/from-ods] Request started")
+    
+    t_fetch_start = time.time()
     raw = await _fetch_raw_state()
+    print(f"[/state/from-ods] fetch_raw_state took {time.time() - t_fetch_start:.2f}s")
     
     if not ODS_URL:
         raise HTTPException(501, "ODS_URL not set")
@@ -610,24 +626,113 @@ async def state_from_ods():
         raise HTTPException(400, "No screenshot in SUT state")
 
     try:
+        t_ods_start = time.time()
         ods_data = await _call_ods_with_base64(b64)
+        print(f"[/state/from-ods] ODS call took {time.time() - t_ods_start:.2f}s")
         if not ods_data or not ods_data.get("parsed_content_list"):
              raise HTTPException(502, "ODS returned empty data")
             
         screen = raw.get("screen") or {"w":1920, "h":1080}
         ods_elements = _elements_from_ods_response(ods_data, screen)
         
+        # --- GÜNCELLEME: KOORDİNAT YUVARLAMA (Token Tasarrufu) ---
+        # Küsuratlı float değerleri (örn: 872.854...) tam sayıya (872) çeviriyoruz.
+        for el in ods_elements:
+            if "center" in el:
+                el["center"]["x"] = int(el["center"]["x"])
+                el["center"]["y"] = int(el["center"]["y"])
+        # ---------------------------------------------------------
+
         # Enrichment (optional for ODS)
         # _enrich_with_icons_yolo(raw, ods_elements, {})
 
         if not INCLUDE_DUPLICATES_FOR_LLM:
              ods_elements, _ = _dedupe_by_name_smart(ods_elements)
 
-        return _finalize_elements_for_llm(ods_elements, screen)
+        t_finalize_start = time.time()
+        result = _finalize_elements_for_llm(ods_elements, screen)
+        print(f"[/state/from-ods] finalize took {time.time() - t_finalize_start:.2f}s")
+        print(f"[/state/from-ods] TOTAL TIME: {time.time() - t_endpoint_start:.2f}s")
+        return result
         
     except Exception as e:
-        print(f"ODS Critical Error: {e}")
+        print(f"[/state/from-ods] ODS Critical Error after {time.time() - t_endpoint_start:.2f}s: {e}")
         raise HTTPException(502, f"ODS Service Failed: {str(e)}")
+
+@app.post("/debug/ods")
+async def debug_ods_overlay():
+    """
+    Debug endpoint to fetch state from SUT, send to ODS, 
+    save the overlay image locally, and return the ID mapping.
+    """
+    # 1. Fetch raw state from SUT to get the screenshot
+    try:
+        raw = await _fetch_raw_state()
+        b64 = _extract_screenshot_b64(raw)
+        if not b64:
+            raise HTTPException(400, "No screenshot found in SUT state")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch state from SUT: {e}")
+
+    # 2. Call ODS service
+    if not ODS_URL:
+        raise HTTPException(501, "ODS_URL is not configured")
+    
+    try:
+        start_time = time.time()
+        ods_data = await _call_ods_with_base64(b64)
+        latency = time.time() - start_time
+    except Exception as e:
+        raise HTTPException(502, f"ODS Service Failed: {e}")
+
+    if not ods_data:
+        raise HTTPException(502, "ODS returned empty response")
+
+    # 3. Save Overlay Image (if available)
+    overlay_b64 = ods_data.get("som_image_base64")
+    saved_filename = None
+    
+    if overlay_b64:
+        try:
+            # Clean up base64 string if it has a header
+            if "," in overlay_b64:
+                overlay_b64 = overlay_b64.split(",")[1]
+            
+            img_data = base64.b64decode(overlay_b64)
+            
+            # Save to current directory with timestamp
+            ts = int(time.time())
+            filename = f"ods_debug_{ts}.png"
+            with open(filename, "wb") as f:
+                f.write(img_data)
+            
+            saved_filename = os.path.abspath(filename)
+            print(f"🖼️  ODS Overlay saved to: {saved_filename}")
+        except Exception as e:
+            print(f"⚠️ Failed to save overlay image: {e}")
+
+    # 4. Process and Return ID Mapping
+    # OmniParser returns a list where the index usually corresponds to the ID in the overlay.
+    parsed_content = ods_data.get("parsed_content_list", [])
+    
+    id_mapping = []
+    for idx, item in enumerate(parsed_content):
+        id_mapping.append({
+            "id": idx,  # The overlay usually uses 0-based or 1-based indexing matching this order
+            "type": item.get("type"),
+            "content": item.get("content"),
+            "bbox": item.get("bbox"),
+            "source": item.get("source")
+        })
+
+    return {
+        "status": "ok",
+        "ods_latency": latency,
+        "overlay_image_path": saved_filename,
+        "element_count": len(id_mapping),
+        "elements": id_mapping
+    }
+
 
 @app.get("/config")
 async def config():

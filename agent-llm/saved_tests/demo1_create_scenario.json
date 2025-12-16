@@ -1,0 +1,5213 @@
+{
+  "action_id": "replay_demo1_create_scenario_1765872703",
+  "coords_space": "physical",
+  "steps": [
+    {
+      "type": "click",
+      "button": "left",
+      "click_count": 1,
+      "target": {
+        "point": {
+          "x": 36.0,
+          "y": 76.0
+        }
+      }
+    },
+    {
+      "type": "wait",
+      "ms": 500
+    },
+    {
+      "type": "wait",
+      "ms": 500
+    },
+    {
+      "type": "click",
+      "button": "left",
+      "click_count": 1,
+      "target": {
+        "point": {
+          "x": 1041.0,
+          "y": 359.0
+        }
+      }
+    },
+    {
+      "type": "type",
+      "text": "agentest",
+      "enter": false
+    },
+    {
+      "type": "wait",
+      "ms": 500
+    },
+    {
+      "type": "click",
+      "button": "left",
+      "click_count": 1,
+      "target": {
+        "point": {
+          "x": 960.0,
+          "y": 628.0
+        }
+      }
+    },
+    {
+      "type": "wait",
+      "ms": 500
+    },
+    {
+      "type": "click",
+      "button": "left",
+      "click_count": 1,
+      "target": {
+        "point": {
+          "x": 959.0,
+          "y": 473.0
+        }
+      }
+    },
+    {
+      "type": "wait",
+      "ms": 500
+    },
+    {
+      "type": "click",
+      "button": "left",
+      "click_count": 1,
+      "target": {
+        "point": {
+          "x": 962.0,
+          "y": 797.0
+        }
+      }
+    },
+    {
+      "type": "wait",
+      "ms": 500
+    },
+    {
+      "type": "wait",
+      "ms": 500
+    },
+    {
+      "type": "click",
+      "button": "left",
+      "click_count": 1,
+      "target": {
+        "point": {
+          "x": 1131.0,
+          "y": 565.0
+        }
+      }
+    },
+    {
+      "type": "wait",
+      "ms": 500
+    }
+  ],
+  "step_definitions": [
+    {
+      "test_step": "Click 'New Scenario'",
+      "expected_result": "Scenario Management dialog opens",
+      "note_to_llm": ""
+    },
+    {
+      "test_step": "Type 'agentest' in area next to Name",
+      "expected_result": "'agentest' is visible",
+      "note_to_llm": "Click 'checkbox' or 'blank space' before typing 'agentest'"
+    },
+    {
+      "test_step": "Type 'tested' in area under Description",
+      "expected_result": "'tested' is visible",
+      "note_to_llm": "Click 'maximize window' before typing"
+    },
+    {
+      "test_step": "Click 'Add New Scenario'",
+      "expected_result": "'Save Result' visible",
+      "note_to_llm": ""
+    },
+    {
+      "test_step": "Click 'OK'",
+      "expected_result": "Dialog closes",
+      "note_to_llm": ""
+    }
+  ],
+  "execution_result": [
+    {
+      "step": {
+        "test_step": "Click 'New Scenario'",
+        "expected_result": "Scenario Management dialog opens",
+        "note_to_llm": ""
+      },
+      "result": {
+        "status": "passed",
+        "attempts": 1,
+        "reason": "Success (WinDriver)",
+        "actions": [
+          {
+            "action_id": "step_1",
+            "plan": {
+              "reasoning": "The user requested to click 'New Scenario'. There is no spatial context provided, so we will use the exact name match. The element 'New Scenario' is located at (36.0,76.0).",
+              "action_id": "step_1",
+              "coords_space": "physical",
+              "steps": [
+                {
+                  "type": "click",
+                  "button": "left",
+                  "click_count": 1,
+                  "target": {
+                    "point": {
+                      "x": 36.0,
+                      "y": 76.0
+                    }
+                  }
+                },
+                {
+                  "type": "wait",
+                  "ms": 500
+                }
+              ]
+            },
+            "ack": {
+              "action_id": "step_1",
+              "applied": 2,
+              "status": "ok",
+              "timestamp": 1765872613734
+            },
+            "state_before": {
+              "elements": [
+                {
+                  "name": "FIVE - Forces in Virtual Environment",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 531.0
+                  }
+                },
+                {
+                  "name": "System",
+                  "type": "unknown",
+                  "center": {
+                    "x": 11.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Minimize",
+                  "type": "button",
+                  "center": {
+                    "x": 1802.0,
+                    "y": 15.0
+                  }
+                },
+                {
+                  "name": "Restore",
+                  "type": "button",
+                  "center": {
+                    "x": 1849.0,
+                    "y": 15.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "button",
+                  "center": {
+                    "x": 1900.0,
+                    "y": 15.0
+                  }
+                },
+                {
+                  "name": "Scenario",
+                  "type": "unknown",
+                  "center": {
+                    "x": 40.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Debriefing",
+                  "type": "unknown",
+                  "center": {
+                    "x": 112.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "View",
+                  "type": "unknown",
+                  "center": {
+                    "x": 174.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Map",
+                  "type": "unknown",
+                  "center": {
+                    "x": 218.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Tools",
+                  "type": "unknown",
+                  "center": {
+                    "x": 263.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Help",
+                  "type": "unknown",
+                  "center": {
+                    "x": 309.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "New Scenario",
+                  "type": "button",
+                  "center": {
+                    "x": 36.0,
+                    "y": 76.0
+                  }
+                },
+                {
+                  "name": "Open Scenario",
+                  "type": "button",
+                  "center": {
+                    "x": 73.0,
+                    "y": 76.0
+                  }
+                },
+                {
+                  "name": "Enter Full Screen",
+                  "type": "button",
+                  "center": {
+                    "x": 1899.0,
+                    "y": 76.0
+                  }
+                },
+                {
+                  "name": "Map Widget",
+                  "type": "unknown",
+                  "center": {
+                    "x": 960.0,
+                    "y": 557.0
+                  }
+                },
+                {
+                  "name": "Open",
+                  "type": "unknown",
+                  "center": {
+                    "x": 884.0,
+                    "y": 126.0
+                  }
+                },
+                {
+                  "name": "Pan",
+                  "type": "unknown",
+                  "center": {
+                    "x": 914.0,
+                    "y": 126.0
+                  }
+                },
+                {
+                  "name": "Bullseye",
+                  "type": "unknown",
+                  "center": {
+                    "x": 944.0,
+                    "y": 126.0
+                  }
+                },
+                {
+                  "name": "Grid",
+                  "type": "unknown",
+                  "center": {
+                    "x": 1004.0,
+                    "y": 126.0
+                  }
+                },
+                {
+                  "name": "Remove",
+                  "type": "unknown",
+                  "center": {
+                    "x": 1034.0,
+                    "y": 126.0
+                  }
+                },
+                {
+                  "name": "Two Point Continuous Bearing",
+                  "type": "unknown",
+                  "center": {
+                    "x": 974.0,
+                    "y": 126.0
+                  }
+                },
+                {
+                  "name": "BR",
+                  "type": "text",
+                  "center": {
+                    "x": 974.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "294921.00 m",
+                  "type": "text",
+                  "center": {
+                    "x": 1799.0,
+                    "y": 978.0
+                  }
+                },
+                {
+                  "name": "1/8728334",
+                  "type": "text",
+                  "center": {
+                    "x": 1873.0,
+                    "y": 978.0
+                  }
+                }
+              ],
+              "llm_view": "ID | Name | Type | (x,y)\n------------------------------------------------------------\n1 | Scenario | unknown | (40.0,38.0)\n2 | Debriefing | unknown | (112.0,38.0)\n3 | View | unknown | (174.0,38.0)\n4 | Map | unknown | (218.0,38.0)\n5 | Tools | unknown | (263.0,38.0)\n6 | Help | unknown | (309.0,38.0)\n7 | New Scenario | button | (36.0,76.0)\n8 | Open Scenario | button | (73.0,76.0)\n9 | Open | unknown | (884.0,126.0)",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 24,
+              "_debug": {
+                "ocr_skipped": "disabled",
+                "yolo_skipped": "disabled_or_not_ready",
+                "dedupe_count": 77
+              }
+            },
+            "state_after": {
+              "elements": [
+                {
+                  "name": "FIVE - Forces in Virtual Environment",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 531.0
+                  }
+                },
+                {
+                  "name": "appBgTransparent",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 540.0
+                  }
+                },
+                {
+                  "name": "appDialogTitle",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "appBgTransparent",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 552.0
+                  }
+                },
+                {
+                  "name": "System",
+                  "type": "unknown",
+                  "center": {
+                    "x": 11.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Minimize",
+                  "type": "button",
+                  "center": {
+                    "x": 1802.0,
+                    "y": 15.0
+                  }
+                },
+                {
+                  "name": "Restore",
+                  "type": "button",
+                  "center": {
+                    "x": 1849.0,
+                    "y": 15.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "button",
+                  "center": {
+                    "x": 1900.0,
+                    "y": 15.0
+                  }
+                },
+                {
+                  "name": "Scenario",
+                  "type": "unknown",
+                  "center": {
+                    "x": 40.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Debriefing",
+                  "type": "unknown",
+                  "center": {
+                    "x": 112.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "View",
+                  "type": "unknown",
+                  "center": {
+                    "x": 174.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Map",
+                  "type": "unknown",
+                  "center": {
+                    "x": 218.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Tools",
+                  "type": "unknown",
+                  "center": {
+                    "x": 263.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Help",
+                  "type": "unknown",
+                  "center": {
+                    "x": 309.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "New Scenario",
+                  "type": "button",
+                  "center": {
+                    "x": 36.0,
+                    "y": 76.0
+                  }
+                },
+                {
+                  "name": "Open Scenario",
+                  "type": "button",
+                  "center": {
+                    "x": 73.0,
+                    "y": 76.0
+                  }
+                },
+                {
+                  "name": "Enter Full Screen",
+                  "type": "button",
+                  "center": {
+                    "x": 1899.0,
+                    "y": 76.0
+                  }
+                },
+                {
+                  "name": "Scenario Management",
+                  "type": "text",
+                  "center": {
+                    "x": 943.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "X",
+                  "type": "button",
+                  "center": {
+                    "x": 1133.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "unknown",
+                  "center": {
+                    "x": 830.0,
+                    "y": 288.0
+                  }
+                },
+                {
+                  "name": "Map Widget",
+                  "type": "unknown",
+                  "center": {
+                    "x": 960.0,
+                    "y": 557.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "button",
+                  "center": {
+                    "x": 960.0,
+                    "y": 797.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "text",
+                  "center": {
+                    "x": 960.0,
+                    "y": 326.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "text",
+                  "center": {
+                    "x": 876.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "text",
+                  "center": {
+                    "x": 876.0,
+                    "y": 390.0
+                  }
+                },
+                {
+                  "name": "Name",
+                  "type": "text",
+                  "center": {
+                    "x": 876.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "Description",
+                  "type": "text",
+                  "center": {
+                    "x": 960.0,
+                    "y": 475.0
+                  }
+                },
+                {
+                  "name": "Open",
+                  "type": "unknown",
+                  "center": {
+                    "x": 884.0,
+                    "y": 126.0
+                  }
+                },
+                {
+                  "name": "Pan",
+                  "type": "unknown",
+                  "center": {
+                    "x": 914.0,
+                    "y": 126.0
+                  }
+                },
+                {
+                  "name": "Bullseye",
+                  "type": "unknown",
+                  "center": {
+                    "x": 944.0,
+                    "y": 126.0
+                  }
+                },
+                {
+                  "name": "Grid",
+                  "type": "unknown",
+                  "center": {
+                    "x": 1004.0,
+                    "y": 126.0
+                  }
+                },
+                {
+                  "name": "Remove",
+                  "type": "unknown",
+                  "center": {
+                    "x": 1034.0,
+                    "y": 126.0
+                  }
+                },
+                {
+                  "name": "Two Point Continuous Bearing",
+                  "type": "unknown",
+                  "center": {
+                    "x": 974.0,
+                    "y": 126.0
+                  }
+                },
+                {
+                  "name": "BR",
+                  "type": "text",
+                  "center": {
+                    "x": 974.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "294921.00 m",
+                  "type": "text",
+                  "center": {
+                    "x": 1799.0,
+                    "y": 978.0
+                  }
+                },
+                {
+                  "name": "1/8728334",
+                  "type": "text",
+                  "center": {
+                    "x": 1873.0,
+                    "y": 978.0
+                  }
+                }
+              ],
+              "llm_view": "Format: (x,y) [Type] Name\n----------------------------------------\n(960,531) [container] FIVE - Forces in Virtual Environment\n(960,540) [container] appBgTransparent\n(960,252) [container] appDialogTitle\n(960,552) [container] appBgTransparent\n(11,11) [unknown] System\n(1802,15) [button] Minimize\n(1849,15) [button] Restore\n(1900,15) [button] Close\n(40,38) [unknown] Scenario\n(112,38) [unknown] Debriefing\n(174,38) [unknown] View\n(218,38) [unknown] Map\n(263,38) [unknown] Tools\n(309,38) [unknown] Help\n(36,76) [button] New Scenario\n(73,76) [button] Open Scenario\n(1899,76) [button] Enter Full Screen\n(943,252) [text] Scenario Management\n(1133,252) [button] X\n(830,288) [unknown] Tactical Scenario\n(960,557) [unknown] Map Widget\n(960,797) [button] Add New Scenario\n(960,326) [text] Scenario Details\n(876,431) [text] Training Areas\n(876,390) [text] Scenario Start Date\n(876,359) [text] Name\n(960,475) [text] Description\n(884,126) [unknown] Open\n(914,126) [unknown] Pan\n(944,126) [unknown] Bullseye\n(1004,126) [unknown] Grid\n(1034,126) [unknown] Remove\n(974,126) [unknown] Two Point Continuous Bearing\n(974,125) [text] BR\n(1799,978) [text] 294921.00 m\n(1873,978) [text] 1/8728334",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 36,
+              "_debug": {
+                "ocr_skipped": "disabled",
+                "yolo_skipped": "disabled_or_not_ready",
+                "dedupe_count": 88
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step": {
+        "test_step": "Type 'agentest' in area next to Name",
+        "expected_result": "'agentest' is visible",
+        "note_to_llm": "Click 'checkbox' or 'blank space' before typing 'agentest'"
+      },
+      "result": {
+        "status": "passed",
+        "attempts": 2,
+        "reason": "Success (ODS)",
+        "actions": [
+          {
+            "action_id": "step_2",
+            "plan": {
+              "reasoning": "The user wants to type 'agentest' in the area next to 'Name'. The closest icon to the right of 'Name' is a checkbox at (1041.0,359.0). Clicking this checkbox or blank space before typing will ensure the cursor is correctly positioned.",
+              "action_id": "step_2",
+              "coords_space": "physical",
+              "steps": [
+                {
+                  "type": "click",
+                  "button": "left",
+                  "click_count": 1,
+                  "target": {
+                    "point": {
+                      "x": 1041.0,
+                      "y": 359.0
+                    }
+                  }
+                },
+                {
+                  "type": "type",
+                  "text": "agentest",
+                  "enter": false
+                }
+              ]
+            },
+            "ack": {
+              "action_id": "step_2",
+              "applied": 2,
+              "status": "ok",
+              "timestamp": 1765872632709
+            },
+            "state_before": {
+              "elements": [
+                {
+                  "name": "FIVE",
+                  "type": "text",
+                  "center": {
+                    "x": 35.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Forces in Virtua",
+                  "type": "text",
+                  "center": {
+                    "x": 96.0,
+                    "y": 13.0
+                  }
+                },
+                {
+                  "name": "Environment",
+                  "type": "text",
+                  "center": {
+                    "x": 179.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Description",
+                  "type": "text",
+                  "center": {
+                    "x": 959.0,
+                    "y": 476.0
+                  }
+                },
+                {
+                  "name": "s90p3",
+                  "type": "text",
+                  "center": {
+                    "x": 45.0,
+                    "y": 949.0
+                  }
+                },
+                {
+                  "name": "Mtncts",
+                  "type": "text",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 958.0
+                  }
+                },
+                {
+                  "name": "16 [O 264",
+                  "type": "text",
+                  "center": {
+                    "x": 1713.0,
+                    "y": 983.0
+                  }
+                },
+                {
+                  "name": "Altuude 2423628",
+                  "type": "text",
+                  "center": {
+                    "x": 149.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "Elevaton <",
+                  "type": "text",
+                  "center": {
+                    "x": 237.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "16.12.2025 11:10.13",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 389.0
+                  }
+                },
+                {
+                  "name": "cogdoooo",
+                  "type": "icon",
+                  "center": {
+                    "x": 49.0,
+                    "y": 972.0
+                  }
+                },
+                {
+                  "name": "BR",
+                  "type": "icon",
+                  "center": {
+                    "x": 974.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 957.0,
+                    "y": 797.0
+                  }
+                },
+                {
+                  "name": "TUR",
+                  "type": "icon",
+                  "center": {
+                    "x": 1782.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Type here to search",
+                  "type": "icon",
+                  "center": {
+                    "x": 176.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "11:10 16.12.2025",
+                  "type": "icon",
+                  "center": {
+                    "x": 1834.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Meter",
+                  "type": "icon",
+                  "center": {
+                    "x": 50.0,
+                    "y": 999.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 829.0,
+                    "y": 287.0
+                  }
+                },
+                {
+                  "name": "l@ dx",
+                  "type": "icon",
+                  "center": {
+                    "x": 1742.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "SCENARIO MANAGEMENT",
+                  "type": "icon",
+                  "center": {
+                    "x": 947.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "Help",
+                  "type": "icon",
+                  "center": {
+                    "x": 309.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "View",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "icon",
+                  "center": {
+                    "x": 871.0,
+                    "y": 390.0
+                  }
+                },
+                {
+                  "name": "Center 39405.20940,022015.0019",
+                  "type": "icon",
+                  "center": {
+                    "x": 197.0,
+                    "y": 973.0
+                  }
+                },
+                {
+                  "name": "Map",
+                  "type": "icon",
+                  "center": {
+                    "x": 218.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Debriefing",
+                  "type": "icon",
+                  "center": {
+                    "x": 113.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Tools",
+                  "type": "icon",
+                  "center": {
+                    "x": 263.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "294921.00 m 18728334",
+                  "type": "icon",
+                  "center": {
+                    "x": 1832.0,
+                    "y": 978.0
+                  }
+                },
+                {
+                  "name": "Name",
+                  "type": "icon",
+                  "center": {
+                    "x": 875.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "Qur3or 4482267220,025'47.7203",
+                  "type": "icon",
+                  "center": {
+                    "x": 183.0,
+                    "y": 947.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "icon",
+                  "center": {
+                    "x": 955.0,
+                    "y": 322.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "icon",
+                  "center": {
+                    "x": 842.0,
+                    "y": 430.0
+                  }
+                },
+                {
+                  "name": "Maximize window",
+                  "type": "icon",
+                  "center": {
+                    "x": 960.0,
+                    "y": 628.0
+                  }
+                },
+                {
+                  "name": "a checkbox.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1041.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "Scroll up and down.",
+                  "type": "icon",
+                  "center": {
+                    "x": 883.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "the Windows operating system.",
+                  "type": "icon",
+                  "center": {
+                    "x": 23.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 804.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "a grid or grid view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1003.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Delete or trash.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1034.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Microsoft 365",
+                  "type": "icon",
+                  "center": {
+                    "x": 362.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Handprint or handprint functionality.",
+                  "type": "icon",
+                  "center": {
+                    "x": 913.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Manage Changes",
+                  "type": "icon",
+                  "center": {
+                    "x": 35.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "A web browser or web browser application.",
+                  "type": "icon",
+                  "center": {
+                    "x": 943.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Home",
+                  "type": "icon",
+                  "center": {
+                    "x": 607.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Movies & TV",
+                  "type": "icon",
+                  "center": {
+                    "x": 410.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Scanning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1899.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 755.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Add",
+                  "type": "icon",
+                  "center": {
+                    "x": 1567.0,
+                    "y": 76.0
+                  }
+                },
+                {
+                  "name": "A painting or painting tool.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1794.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Google Chrome",
+                  "type": "icon",
+                  "center": {
+                    "x": 655.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Step 1",
+                  "type": "icon",
+                  "center": {
+                    "x": 74.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Toggleoggleoggle settings",
+                  "type": "icon",
+                  "center": {
+                    "x": 1604.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Bookmark",
+                  "type": "icon",
+                  "center": {
+                    "x": 1853.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Pinning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Account",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 74.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 315.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1134.0,
+                    "y": 253.0
+                  }
+                },
+                {
+                  "name": "Image",
+                  "type": "icon",
+                  "center": {
+                    "x": 559.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1680.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 461.0,
+                    "y": 1057.0
+                  }
+                },
+                {
+                  "name": "Properties",
+                  "type": "icon",
+                  "center": {
+                    "x": 1100.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Toggle",
+                  "type": "icon",
+                  "center": {
+                    "x": 1705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Copy",
+                  "type": "icon",
+                  "center": {
+                    "x": 1849.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1895.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Properties",
+                  "type": "icon",
+                  "center": {
+                    "x": 510.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Font",
+                  "type": "icon",
+                  "center": {
+                    "x": 10.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Squares",
+                  "type": "icon",
+                  "center": {
+                    "x": 705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "a stopwatch function.",
+                  "type": "icon",
+                  "center": {
+                    "x": 5.0,
+                    "y": 74.0
+                  }
+                },
+                {
+                  "name": "Maximize window.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1157.0,
+                    "y": 401.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1914.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 42.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 950.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 42.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1890.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 901.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1715.0,
+                    "y": 41.0
+                  }
+                },
+                {
+                  "name": "a beach or ocean view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 852.0,
+                    "y": 1077.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1754.0,
+                    "y": 42.0
+                  }
+                }
+              ],
+              "llm_view": "ID | Name | Type | (x,y)\n------------------------------------------------------------\n1 | Scenario Details | icon | (955.0,322.0)\n2 | Name | icon | (875.0,359.0)\n3 | a checkbox. | icon | (1041.0,359.0)\n4 | 16.12.2025 11:10.13 | icon | (1040.0,389.0)\n5 | Scenario Start Date | icon | (871.0,390.0)\n6 | Training Areas | icon | (842.0,430.0)",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 81
+            },
+            "state_after": {
+              "elements": [
+                {
+                  "name": "s90p3",
+                  "type": "text",
+                  "center": {
+                    "x": 45.0,
+                    "y": 949.0
+                  }
+                },
+                {
+                  "name": "Mtncts",
+                  "type": "text",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 958.0
+                  }
+                },
+                {
+                  "name": "16 [O 264",
+                  "type": "text",
+                  "center": {
+                    "x": 1713.0,
+                    "y": 983.0
+                  }
+                },
+                {
+                  "name": "Altuude 2423628",
+                  "type": "text",
+                  "center": {
+                    "x": 149.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "Elevaton <",
+                  "type": "text",
+                  "center": {
+                    "x": 237.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "16.12.202511.10.13",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 389.0
+                  }
+                },
+                {
+                  "name": "agentest",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "cogdoooo",
+                  "type": "icon",
+                  "center": {
+                    "x": 49.0,
+                    "y": 972.0
+                  }
+                },
+                {
+                  "name": "BR",
+                  "type": "icon",
+                  "center": {
+                    "x": 974.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 956.0,
+                    "y": 796.0
+                  }
+                },
+                {
+                  "name": "TUR",
+                  "type": "icon",
+                  "center": {
+                    "x": 1782.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Type here to search",
+                  "type": "icon",
+                  "center": {
+                    "x": 174.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "11:10 16.12.2025",
+                  "type": "icon",
+                  "center": {
+                    "x": 1834.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Meter",
+                  "type": "icon",
+                  "center": {
+                    "x": 50.0,
+                    "y": 999.0
+                  }
+                },
+                {
+                  "name": "l@ dx",
+                  "type": "icon",
+                  "center": {
+                    "x": 1742.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 830.0,
+                    "y": 287.0
+                  }
+                },
+                {
+                  "name": "SCENARIO MANAGEMENT",
+                  "type": "icon",
+                  "center": {
+                    "x": 947.0,
+                    "y": 251.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "icon",
+                  "center": {
+                    "x": 873.0,
+                    "y": 390.0
+                  }
+                },
+                {
+                  "name": "Help",
+                  "type": "icon",
+                  "center": {
+                    "x": 308.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Center 39405.20940,022015.0019",
+                  "type": "icon",
+                  "center": {
+                    "x": 197.0,
+                    "y": 973.0
+                  }
+                },
+                {
+                  "name": "View",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Name",
+                  "type": "icon",
+                  "center": {
+                    "x": 874.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Map",
+                  "type": "icon",
+                  "center": {
+                    "x": 218.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "294921.00 m 18728334",
+                  "type": "icon",
+                  "center": {
+                    "x": 1832.0,
+                    "y": 978.0
+                  }
+                },
+                {
+                  "name": "Tools",
+                  "type": "icon",
+                  "center": {
+                    "x": 264.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Debriefing",
+                  "type": "icon",
+                  "center": {
+                    "x": 113.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Qur3or 4482267220,025'47.7203",
+                  "type": "icon",
+                  "center": {
+                    "x": 183.0,
+                    "y": 947.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "icon",
+                  "center": {
+                    "x": 957.0,
+                    "y": 323.0
+                  }
+                },
+                {
+                  "name": "Description",
+                  "type": "icon",
+                  "center": {
+                    "x": 959.0,
+                    "y": 473.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "icon",
+                  "center": {
+                    "x": 843.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "@ FIVE Forces in Virtua Environment",
+                  "type": "icon",
+                  "center": {
+                    "x": 112.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Maximize window",
+                  "type": "icon",
+                  "center": {
+                    "x": 960.0,
+                    "y": 628.0
+                  }
+                },
+                {
+                  "name": "Scroll up and down.",
+                  "type": "icon",
+                  "center": {
+                    "x": 883.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "the Windows operating system.",
+                  "type": "icon",
+                  "center": {
+                    "x": 23.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 804.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "a grid or grid view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1004.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Delete or trash.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1034.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Microsoft 365",
+                  "type": "icon",
+                  "center": {
+                    "x": 362.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Handprint or handprint functionality.",
+                  "type": "icon",
+                  "center": {
+                    "x": 913.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "A web browser or web browser application.",
+                  "type": "icon",
+                  "center": {
+                    "x": 943.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Home",
+                  "type": "icon",
+                  "center": {
+                    "x": 607.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Scanning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1899.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Movies & TV",
+                  "type": "icon",
+                  "center": {
+                    "x": 410.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 755.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 35.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Add",
+                  "type": "icon",
+                  "center": {
+                    "x": 1567.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "A program or application related to programming or programming.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1795.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Google Chrome",
+                  "type": "icon",
+                  "center": {
+                    "x": 655.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Bookmark",
+                  "type": "icon",
+                  "center": {
+                    "x": 1853.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "TikTok",
+                  "type": "icon",
+                  "center": {
+                    "x": 1604.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Step",
+                  "type": "icon",
+                  "center": {
+                    "x": 73.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 315.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Account",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 74.0
+                  }
+                },
+                {
+                  "name": "Pinning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1134.0,
+                    "y": 253.0
+                  }
+                },
+                {
+                  "name": "Image",
+                  "type": "icon",
+                  "center": {
+                    "x": 559.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1680.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 461.0,
+                    "y": 1057.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1895.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Properties",
+                  "type": "icon",
+                  "center": {
+                    "x": 1100.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Copy",
+                  "type": "icon",
+                  "center": {
+                    "x": 1849.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Show time and date",
+                  "type": "icon",
+                  "center": {
+                    "x": 1705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Properties",
+                  "type": "icon",
+                  "center": {
+                    "x": 510.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Squares",
+                  "type": "icon",
+                  "center": {
+                    "x": 705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "a stopwatch function.",
+                  "type": "icon",
+                  "center": {
+                    "x": 5.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Maximize window.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1157.0,
+                    "y": 401.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1715.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 950.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 43.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 901.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1890.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "a beach or ocean view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 852.0,
+                    "y": 1077.0
+                  }
+                }
+              ],
+              "llm_view": "Format: (x,y) [Type] Name\n----------------------------------------\n(45,949) [text] s90p3\n(1716,958) [text] Mtncts\n(1713,983) [text] 16 [O 264\n(149,1001) [text] Altuude 2423628\n(237,1001) [text] Elevaton <\n(1040,389) [icon] 16.12.202511.10.13\n(1040,359) [icon] agentest\n(49,972) [icon] cogdoooo\n(974,124) [icon] BR\n(956,796) [icon] Add New Scenario\n(1782,1058) [icon] TUR\n(174,1058) [icon] Type here to search\n(1834,1058) [icon] 11:10 16.12.2025\n(50,999) [icon] Meter\n(1742,1059) [icon] l@ dx\n(830,287) [icon] Tactical Scenario\n(947,251) [icon] SCENARIO MANAGEMENT\n(873,390) [icon] Scenario Start Date\n(308,37) [icon] Help\n(197,973) [icon] Center 39405.20940,022015.0019\n(175,38) [icon] View\n(874,359) [icon] Name\n(41,38) [icon] Scenario\n(218,38) [icon] Map\n(1832,978) [icon] 294921.00 m 18728334\n(264,38) [icon] Tools\n(113,37) [icon] Debriefing\n(183,947) [icon] Qur3or 4482267220,025'47.7203\n(957,323) [icon] Scenario Details\n(959,473) [icon] Description\n(843,431) [icon] Training Areas\n(112,11) [icon] @ FIVE Forces in Virtua Environment\n(960,628) [icon] Maximize window\n(883,125) [icon] Scroll up and down.\n(23,1059) [icon] the Windows operating system.\n(804,1059) [icon] Microsoft Excel\n(1004,124) [icon] a grid or grid view.\n(1034,124) [icon] Delete or trash.\n(362,1059) [icon] Microsoft 365\n(913,124) [icon] Handprint or handprint functionality.\n(943,124) [icon] A web browser or web browser application.\n(607,1061) [icon] Home\n(1899,75) [icon] Scanning\n(410,1059) [icon] Movies & TV\n(755,1060) [icon] Microsoft Excel\n(35,75) [icon] Increase\n(1567,75) [icon] Add\n(1795,75) [icon] A program or application related to programming or progra...\n(655,1061) [icon] Google Chrome\n(1853,75) [icon] Bookmark\n(1753,75) [icon] Increase\n(1604,75) [icon] TikTok\n(1716,75) [icon] More Options\n(73,75) [icon] Step\n(315,1060) [icon] More Options\n(1678,74) [icon] Account\n(1641,75) [icon] Pinning\n(1134,253) [icon] Close\n(559,1061) [icon] Image\n(1680,1059) [icon] M0,0L9,0 4.5,5z\n(461,1057) [icon] Microsoft Excel\n(1895,10) [icon] Close\n(1100,431) [icon] Properties\n(1849,10) [icon] Copy\n(1705,1061) [icon] Show time and date\n(510,1058) [icon] Properties\n(705,1061) [icon] Squares\n(5,75) [icon] a stopwatch function.\n(1157,401) [icon] Maximize window.\n(1678,39) [icon] M0,0L9,0 4.5,5z\n(1641,39) [icon] M0,0L9,0 4.5,5z\n(1715,39) [icon] M0,0L9,0 4.5,5z\n(950,1078) [icon] a loading or buffering indicator.\n(1753,43) [icon] M0,0L9,0 4.5,5z\n(901,1078) [icon] a loading or buffering indicator.\n(1890,1078) [icon] M0,0L9,0 4.5,5z\n(852,1077) [icon] a beach or ocean view.",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 77
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step": {
+        "test_step": "Type 'tested' in area under Description",
+        "expected_result": "'tested' is visible",
+        "note_to_llm": "Click 'maximize window' before typing"
+      },
+      "result": {
+        "status": "passed",
+        "attempts": 2,
+        "reason": "Success (ODS)",
+        "actions": [
+          {
+            "action_id": "step_3",
+            "plan": {
+              "reasoning": "The user requested to type 'tested' in the area under 'Description'. The closest icon below 'Description' is 'the Windows operating system.' at (23.0,1059.0). Since the note suggests maximizing the window first, I will find the maximize button and click it.",
+              "action_id": "step_3",
+              "coords_space": "physical",
+              "steps": [
+                {
+                  "type": "click",
+                  "button": "left",
+                  "click_count": 1,
+                  "target": {
+                    "point": {
+                      "x": 960.0,
+                      "y": 628.0
+                    }
+                  }
+                },
+                {
+                  "type": "wait",
+                  "ms": 500
+                },
+                {
+                  "type": "click",
+                  "button": "left",
+                  "click_count": 1,
+                  "target": {
+                    "point": {
+                      "x": 959.0,
+                      "y": 473.0
+                    }
+                  }
+                }
+              ]
+            },
+            "ack": {
+              "action_id": "step_3",
+              "applied": 3,
+              "status": "ok",
+              "timestamp": 1765872656067
+            },
+            "state_before": {
+              "elements": [
+                {
+                  "name": "s90p3",
+                  "type": "text",
+                  "center": {
+                    "x": 45.0,
+                    "y": 949.0
+                  }
+                },
+                {
+                  "name": "Mtncts",
+                  "type": "text",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 958.0
+                  }
+                },
+                {
+                  "name": "16 [O 264",
+                  "type": "text",
+                  "center": {
+                    "x": 1713.0,
+                    "y": 983.0
+                  }
+                },
+                {
+                  "name": "Altuude 2423628",
+                  "type": "text",
+                  "center": {
+                    "x": 149.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "Elevaton <",
+                  "type": "text",
+                  "center": {
+                    "x": 237.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "16.12.202511.10.13",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 389.0
+                  }
+                },
+                {
+                  "name": "agentest",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "cogdoooo",
+                  "type": "icon",
+                  "center": {
+                    "x": 49.0,
+                    "y": 972.0
+                  }
+                },
+                {
+                  "name": "BR",
+                  "type": "icon",
+                  "center": {
+                    "x": 974.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 956.0,
+                    "y": 796.0
+                  }
+                },
+                {
+                  "name": "TUR",
+                  "type": "icon",
+                  "center": {
+                    "x": 1782.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Type here to search",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "11:10 16.12.2025",
+                  "type": "icon",
+                  "center": {
+                    "x": 1834.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Meter",
+                  "type": "icon",
+                  "center": {
+                    "x": 50.0,
+                    "y": 999.0
+                  }
+                },
+                {
+                  "name": "l@ dx",
+                  "type": "icon",
+                  "center": {
+                    "x": 1742.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 830.0,
+                    "y": 287.0
+                  }
+                },
+                {
+                  "name": "SCENARIO MANAGEMENT",
+                  "type": "icon",
+                  "center": {
+                    "x": 947.0,
+                    "y": 251.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "icon",
+                  "center": {
+                    "x": 873.0,
+                    "y": 390.0
+                  }
+                },
+                {
+                  "name": "Help",
+                  "type": "icon",
+                  "center": {
+                    "x": 308.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Name",
+                  "type": "icon",
+                  "center": {
+                    "x": 874.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "Center 39405.20940,022015.0019",
+                  "type": "icon",
+                  "center": {
+                    "x": 197.0,
+                    "y": 973.0
+                  }
+                },
+                {
+                  "name": "View",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Map",
+                  "type": "icon",
+                  "center": {
+                    "x": 218.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Tools",
+                  "type": "icon",
+                  "center": {
+                    "x": 264.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "294921.00 m 18728334",
+                  "type": "icon",
+                  "center": {
+                    "x": 1832.0,
+                    "y": 978.0
+                  }
+                },
+                {
+                  "name": "Debriefing",
+                  "type": "icon",
+                  "center": {
+                    "x": 113.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "icon",
+                  "center": {
+                    "x": 957.0,
+                    "y": 323.0
+                  }
+                },
+                {
+                  "name": "Qur3or 4482267220,025'47.7203",
+                  "type": "icon",
+                  "center": {
+                    "x": 183.0,
+                    "y": 947.0
+                  }
+                },
+                {
+                  "name": "Description",
+                  "type": "icon",
+                  "center": {
+                    "x": 959.0,
+                    "y": 473.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "icon",
+                  "center": {
+                    "x": 843.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "@ FIVE Forces in Virtua Environment",
+                  "type": "icon",
+                  "center": {
+                    "x": 112.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Maximize window",
+                  "type": "icon",
+                  "center": {
+                    "x": 960.0,
+                    "y": 628.0
+                  }
+                },
+                {
+                  "name": "Scroll up and down.",
+                  "type": "icon",
+                  "center": {
+                    "x": 883.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "the Windows operating system.",
+                  "type": "icon",
+                  "center": {
+                    "x": 23.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 804.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "a grid or grid view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1004.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Delete or trash.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1034.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Microsoft 365",
+                  "type": "icon",
+                  "center": {
+                    "x": 362.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Handprint or handprint functionality.",
+                  "type": "icon",
+                  "center": {
+                    "x": 913.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "A web browser or web browser application.",
+                  "type": "icon",
+                  "center": {
+                    "x": 943.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Home",
+                  "type": "icon",
+                  "center": {
+                    "x": 607.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Scanning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1899.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Movies & TV",
+                  "type": "icon",
+                  "center": {
+                    "x": 410.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 755.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 35.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Add",
+                  "type": "icon",
+                  "center": {
+                    "x": 1567.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "A program or application related to programming or programming.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1795.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Google Chrome",
+                  "type": "icon",
+                  "center": {
+                    "x": 655.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Bookmark",
+                  "type": "icon",
+                  "center": {
+                    "x": 1853.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "TikTok",
+                  "type": "icon",
+                  "center": {
+                    "x": 1604.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Step",
+                  "type": "icon",
+                  "center": {
+                    "x": 73.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Account",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 74.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 315.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Pinning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1134.0,
+                    "y": 253.0
+                  }
+                },
+                {
+                  "name": "Image",
+                  "type": "icon",
+                  "center": {
+                    "x": 559.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1680.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 461.0,
+                    "y": 1057.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1895.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Properties",
+                  "type": "icon",
+                  "center": {
+                    "x": 1100.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Copy",
+                  "type": "icon",
+                  "center": {
+                    "x": 1849.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Show time and date",
+                  "type": "icon",
+                  "center": {
+                    "x": 1705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Minimize",
+                  "type": "icon",
+                  "center": {
+                    "x": 1804.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Properties",
+                  "type": "icon",
+                  "center": {
+                    "x": 510.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Squares",
+                  "type": "icon",
+                  "center": {
+                    "x": 705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "a stopwatch function.",
+                  "type": "icon",
+                  "center": {
+                    "x": 5.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Maximize window.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1157.0,
+                    "y": 401.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1715.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 950.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 43.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 901.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1890.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "a beach or ocean view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 852.0,
+                    "y": 1077.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1566.0,
+                    "y": 43.0
+                  }
+                }
+              ],
+              "llm_view": "ID | Name | Type | (x,y)\n------------------------------------------------------------\n1 | Minimize | icon | (1804.0,11.0)\n2 | 16.12.202511.10.13 | icon | (1040.0,389.0)\n3 | Scenario Start Date | icon | (873.0,390.0)\n4 | Maximize window. | icon | (1157.0,401.0)\n5 | Training Areas | icon | (843.0,431.0)\n6 | Properties | icon | (1100.0,431.0)\n7 | Description | icon | (959.0,473.0)\n8 | Maximize window | icon | (960.0,628.0)\n9 | the Windows operating system. | icon | (23.0,1059.0)",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 79
+            },
+            "state_after": {
+              "elements": [
+                {
+                  "name": "@ FIVE",
+                  "type": "text",
+                  "center": {
+                    "x": 24.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Forces in Virtua",
+                  "type": "text",
+                  "center": {
+                    "x": 96.0,
+                    "y": 13.0
+                  }
+                },
+                {
+                  "name": "Environment",
+                  "type": "text",
+                  "center": {
+                    "x": 179.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "s90p3",
+                  "type": "text",
+                  "center": {
+                    "x": 45.0,
+                    "y": 949.0
+                  }
+                },
+                {
+                  "name": "Mtncts",
+                  "type": "text",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 958.0
+                  }
+                },
+                {
+                  "name": "16 [O 264",
+                  "type": "text",
+                  "center": {
+                    "x": 1713.0,
+                    "y": 983.0
+                  }
+                },
+                {
+                  "name": "Altuude 2423628",
+                  "type": "text",
+                  "center": {
+                    "x": 149.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "Elevaton <",
+                  "type": "text",
+                  "center": {
+                    "x": 237.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "16.12.202511.10.13",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 389.0
+                  }
+                },
+                {
+                  "name": "agentest",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "cogdoooo",
+                  "type": "icon",
+                  "center": {
+                    "x": 49.0,
+                    "y": 972.0
+                  }
+                },
+                {
+                  "name": "BR",
+                  "type": "icon",
+                  "center": {
+                    "x": 974.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 956.0,
+                    "y": 797.0
+                  }
+                },
+                {
+                  "name": "TUR",
+                  "type": "icon",
+                  "center": {
+                    "x": 1782.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Type here to search",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "11:10 16.12.2025",
+                  "type": "icon",
+                  "center": {
+                    "x": 1834.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Meter",
+                  "type": "icon",
+                  "center": {
+                    "x": 50.0,
+                    "y": 999.0
+                  }
+                },
+                {
+                  "name": "l@ dx",
+                  "type": "icon",
+                  "center": {
+                    "x": 1742.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 830.0,
+                    "y": 287.0
+                  }
+                },
+                {
+                  "name": "SCENARIO MANAGEMENT",
+                  "type": "icon",
+                  "center": {
+                    "x": 947.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "icon",
+                  "center": {
+                    "x": 873.0,
+                    "y": 390.0
+                  }
+                },
+                {
+                  "name": "Help",
+                  "type": "icon",
+                  "center": {
+                    "x": 308.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Center 39405.20940,022015.0019",
+                  "type": "icon",
+                  "center": {
+                    "x": 197.0,
+                    "y": 973.0
+                  }
+                },
+                {
+                  "name": "Name",
+                  "type": "icon",
+                  "center": {
+                    "x": 874.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "View",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Map",
+                  "type": "icon",
+                  "center": {
+                    "x": 218.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "294921.00 m 18728334",
+                  "type": "icon",
+                  "center": {
+                    "x": 1832.0,
+                    "y": 978.0
+                  }
+                },
+                {
+                  "name": "Tools",
+                  "type": "icon",
+                  "center": {
+                    "x": 264.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Debriefing",
+                  "type": "icon",
+                  "center": {
+                    "x": 113.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "icon",
+                  "center": {
+                    "x": 957.0,
+                    "y": 323.0
+                  }
+                },
+                {
+                  "name": "Qur3or 4482267220,025'47.7203",
+                  "type": "icon",
+                  "center": {
+                    "x": 183.0,
+                    "y": 947.0
+                  }
+                },
+                {
+                  "name": "Description",
+                  "type": "icon",
+                  "center": {
+                    "x": 959.0,
+                    "y": 473.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "icon",
+                  "center": {
+                    "x": 843.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "a checkbox.",
+                  "type": "icon",
+                  "center": {
+                    "x": 960.0,
+                    "y": 628.0
+                  }
+                },
+                {
+                  "name": "Scroll up and down.",
+                  "type": "icon",
+                  "center": {
+                    "x": 883.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "the Windows operating system.",
+                  "type": "icon",
+                  "center": {
+                    "x": 23.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 804.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "a grid or grid view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1004.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Delete or trash.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1034.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Microsoft 365",
+                  "type": "icon",
+                  "center": {
+                    "x": 362.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Handprint or handprint functionality.",
+                  "type": "icon",
+                  "center": {
+                    "x": 913.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Home",
+                  "type": "icon",
+                  "center": {
+                    "x": 607.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "A web browser or web browser application.",
+                  "type": "icon",
+                  "center": {
+                    "x": 943.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Scanning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1899.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Movies & TV",
+                  "type": "icon",
+                  "center": {
+                    "x": 410.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 755.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 35.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Add",
+                  "type": "icon",
+                  "center": {
+                    "x": 1567.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Google Chrome",
+                  "type": "icon",
+                  "center": {
+                    "x": 655.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "A program for accessing a video or audio file.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1795.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Bookmark",
+                  "type": "icon",
+                  "center": {
+                    "x": 1853.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "TikTok",
+                  "type": "icon",
+                  "center": {
+                    "x": 1604.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Step",
+                  "type": "icon",
+                  "center": {
+                    "x": 73.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 315.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Account",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 74.0
+                  }
+                },
+                {
+                  "name": "Pinning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1134.0,
+                    "y": 253.0
+                  }
+                },
+                {
+                  "name": "Image",
+                  "type": "icon",
+                  "center": {
+                    "x": 559.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1680.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 461.0,
+                    "y": 1057.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1895.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Properties",
+                  "type": "icon",
+                  "center": {
+                    "x": 1100.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Copy",
+                  "type": "icon",
+                  "center": {
+                    "x": 1850.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Show time and date",
+                  "type": "icon",
+                  "center": {
+                    "x": 1705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Minimize",
+                  "type": "icon",
+                  "center": {
+                    "x": 1804.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 510.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Squares",
+                  "type": "icon",
+                  "center": {
+                    "x": 705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "a stopwatch function.",
+                  "type": "icon",
+                  "center": {
+                    "x": 5.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Maximize window.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1157.0,
+                    "y": 401.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1715.0,
+                    "y": 39.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 950.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 43.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 901.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1890.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "a beach or ocean view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 852.0,
+                    "y": 1077.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1566.0,
+                    "y": 43.0
+                  }
+                }
+              ],
+              "llm_view": "Format: (x,y) [Type] Name\n----------------------------------------\n(24,11) [text] @ FIVE\n(96,13) [text] Forces in Virtua\n(179,11) [text] Environment\n(45,949) [text] s90p3\n(1716,958) [text] Mtncts\n(1713,983) [text] 16 [O 264\n(149,1001) [text] Altuude 2423628\n(237,1001) [text] Elevaton <\n(1040,389) [icon] 16.12.202511.10.13\n(1040,359) [icon] agentest\n(49,972) [icon] cogdoooo\n(974,124) [icon] BR\n(956,797) [icon] Add New Scenario\n(1782,1058) [icon] TUR\n(175,1058) [icon] Type here to search\n(1834,1058) [icon] 11:10 16.12.2025\n(50,999) [icon] Meter\n(1742,1059) [icon] l@ dx\n(830,287) [icon] Tactical Scenario\n(947,252) [icon] SCENARIO MANAGEMENT\n(873,390) [icon] Scenario Start Date\n(308,37) [icon] Help\n(197,973) [icon] Center 39405.20940,022015.0019\n(874,359) [icon] Name\n(175,38) [icon] View\n(41,38) [icon] Scenario\n(218,38) [icon] Map\n(1832,978) [icon] 294921.00 m 18728334\n(264,38) [icon] Tools\n(113,37) [icon] Debriefing\n(957,323) [icon] Scenario Details\n(183,947) [icon] Qur3or 4482267220,025'47.7203\n(959,473) [icon] Description\n(843,431) [icon] Training Areas\n(960,628) [icon] a checkbox.\n(883,125) [icon] Scroll up and down.\n(23,1059) [icon] the Windows operating system.\n(804,1059) [icon] Microsoft Excel\n(1004,124) [icon] a grid or grid view.\n(1034,124) [icon] Delete or trash.\n(362,1059) [icon] Microsoft 365\n(913,124) [icon] Handprint or handprint functionality.\n(607,1061) [icon] Home\n(943,124) [icon] A web browser or web browser application.\n(1899,75) [icon] Scanning\n(410,1059) [icon] Movies & TV\n(755,1060) [icon] Microsoft Excel\n(35,75) [icon] Increase\n(1567,75) [icon] Add\n(655,1061) [icon] Google Chrome\n(1795,75) [icon] A program for accessing a video or audio file.\n(1853,75) [icon] Bookmark\n(1753,75) [icon] Increase\n(1604,75) [icon] TikTok\n(1716,75) [icon] More Options\n(73,75) [icon] Step\n(315,1060) [icon] More Options\n(1678,74) [icon] Account\n(1641,75) [icon] Pinning\n(1134,253) [icon] Close\n(559,1061) [icon] Image\n(1680,1059) [icon] M0,0L9,0 4.5,5z\n(461,1057) [icon] Microsoft Excel\n(1895,10) [icon] Close\n(1100,431) [icon] Properties\n(1850,10) [icon] Copy\n(1705,1061) [icon] Show time and date\n(1804,11) [icon] Minimize\n(510,1058) [icon] Microsoft Excel\n(705,1061) [icon] Squares\n(5,75) [icon] a stopwatch function.\n(1157,401) [icon] Maximize window.\n(1678,39) [icon] M0,0L9,0 4.5,5z\n(1641,39) [icon] M0,0L9,0 4.5,5z\n(1715,39) [icon] M0,0L9,0 4.5,5z\n(950,1078) [icon] a loading or buffering indicator.\n(1753,43) [icon] M0,0L9,0 4.5,5z\n(901,1078) [icon] a loading or buffering indicator.\n(1890,1078) [icon] M0,0L9,0 4.5,5z\n(852,1077) [icon] a beach or ocean view.\n(1566,43) [icon] M0,0L9,0 4.5,5z",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 81
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step": {
+        "test_step": "Click 'Add New Scenario'",
+        "expected_result": "'Save Result' visible",
+        "note_to_llm": ""
+      },
+      "result": {
+        "status": "passed",
+        "attempts": 2,
+        "reason": "Success (ODS)",
+        "actions": [
+          {
+            "action_id": "step_4",
+            "plan": {
+              "reasoning": "The user requested to click 'Add New Scenario'. This is the only button available in the current state.",
+              "action_id": "step_4",
+              "coords_space": "physical",
+              "steps": [
+                {
+                  "type": "click",
+                  "button": "left",
+                  "click_count": 1,
+                  "target": {
+                    "point": {
+                      "x": 960.0,
+                      "y": 797.0
+                    }
+                  }
+                },
+                {
+                  "type": "wait",
+                  "ms": 500
+                }
+              ]
+            },
+            "ack": {
+              "action_id": "step_4",
+              "applied": 2,
+              "status": "ok",
+              "timestamp": 1765872670289
+            },
+            "state_before": {
+              "elements": [
+                {
+                  "name": "appBgTransparent",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 540.0
+                  }
+                },
+                {
+                  "name": "appDialogTitle",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "appBgTransparent",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 552.0
+                  }
+                },
+                {
+                  "name": "Scenario Management",
+                  "type": "text",
+                  "center": {
+                    "x": 943.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "X",
+                  "type": "button",
+                  "center": {
+                    "x": 1133.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "unknown",
+                  "center": {
+                    "x": 830.0,
+                    "y": 288.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "button",
+                  "center": {
+                    "x": 960.0,
+                    "y": 797.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "text",
+                  "center": {
+                    "x": 960.0,
+                    "y": 326.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "text",
+                  "center": {
+                    "x": 876.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "text",
+                  "center": {
+                    "x": 876.0,
+                    "y": 390.0
+                  }
+                },
+                {
+                  "name": "Name",
+                  "type": "text",
+                  "center": {
+                    "x": 876.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "Description",
+                  "type": "text",
+                  "center": {
+                    "x": 960.0,
+                    "y": 475.0
+                  }
+                }
+              ],
+              "llm_view": "ID | Name | Type | (x,y)\n------------------------------------------------------------\n1 | Scenario Management | text | (943.0,252.0)\n2 | Tactical Scenario | unknown | (830.0,288.0)\n3 | Scenario Details | text | (960.0,326.0)\n4 | Scenario Start Date | text | (876.0,390.0)\n5 | Add New Scenario | button | (960.0,797.0)",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 12,
+              "_debug": {
+                "ocr_skipped": "disabled",
+                "yolo_skipped": "disabled_or_not_ready",
+                "dedupe_count": 12
+              }
+            },
+            "state_after": {
+              "elements": [
+                {
+                  "name": "Duplicate Scenario Name",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 540.0
+                  }
+                },
+                {
+                  "name": "Provided scenario name already exists in scenario list!",
+                  "type": "text",
+                  "center": {
+                    "x": 987.0,
+                    "y": 511.0
+                  }
+                },
+                {
+                  "name": "System",
+                  "type": "unknown",
+                  "center": {
+                    "x": 775.0,
+                    "y": 477.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "button",
+                  "center": {
+                    "x": 1140.0,
+                    "y": 474.0
+                  }
+                },
+                {
+                  "name": "OK",
+                  "type": "button",
+                  "center": {
+                    "x": 1131.0,
+                    "y": 565.0
+                  }
+                }
+              ],
+              "llm_view": "Format: (x,y) [Type] Name\n----------------------------------------\n(960,540) [container] Duplicate Scenario Name\n(987,511) [text] Provided scenario name already exists in scenario list!\n(775,477) [unknown] System\n(1140,474) [button] Close\n(1131,565) [button] OK",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 5,
+              "_debug": {
+                "ocr_skipped": "disabled",
+                "yolo_skipped": "disabled_or_not_ready",
+                "dedupe_count": 4
+              }
+            }
+          },
+          {
+            "action_id": "step_4",
+            "plan": {
+              "reasoning": "User requested to click 'Add New Scenario'. The closest icon near the name is at position (962.0,797.0). Since this action might open a new window or dialog, we will add a wait step.",
+              "action_id": "step_4",
+              "coords_space": "physical",
+              "steps": [
+                {
+                  "type": "click",
+                  "button": "left",
+                  "click_count": 1,
+                  "target": {
+                    "point": {
+                      "x": 962.0,
+                      "y": 797.0
+                    }
+                  }
+                },
+                {
+                  "type": "wait",
+                  "ms": 500
+                }
+              ]
+            },
+            "ack": {
+              "action_id": "step_4",
+              "applied": 2,
+              "status": "ok",
+              "timestamp": 1765872686434
+            },
+            "state_before": {
+              "elements": [
+                {
+                  "name": "Name",
+                  "type": "text",
+                  "center": {
+                    "x": 820.0,
+                    "y": 360.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "text",
+                  "center": {
+                    "x": 856.0,
+                    "y": 391.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "text",
+                  "center": {
+                    "x": 843.0,
+                    "y": 432.0
+                  }
+                },
+                {
+                  "name": "Duplicate Scenario Name",
+                  "type": "text",
+                  "center": {
+                    "x": 860.0,
+                    "y": 475.0
+                  }
+                },
+                {
+                  "name": "s90p3",
+                  "type": "text",
+                  "center": {
+                    "x": 45.0,
+                    "y": 949.0
+                  }
+                },
+                {
+                  "name": "Mtncts",
+                  "type": "text",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 958.0
+                  }
+                },
+                {
+                  "name": "16 [O 264",
+                  "type": "text",
+                  "center": {
+                    "x": 1713.0,
+                    "y": 983.0
+                  }
+                },
+                {
+                  "name": "Altuude 2423628",
+                  "type": "text",
+                  "center": {
+                    "x": 149.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "Elevaton <",
+                  "type": "text",
+                  "center": {
+                    "x": 237.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "0 ( tx",
+                  "type": "text",
+                  "center": {
+                    "x": 1731.0,
+                    "y": 1062.0
+                  }
+                },
+                {
+                  "name": "16.12.2025 11:10.13",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 389.0
+                  }
+                },
+                {
+                  "name": "cogdoooo",
+                  "type": "icon",
+                  "center": {
+                    "x": 49.0,
+                    "y": 972.0
+                  }
+                },
+                {
+                  "name": "agentest",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "BR",
+                  "type": "icon",
+                  "center": {
+                    "x": 974.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "TUR",
+                  "type": "icon",
+                  "center": {
+                    "x": 1782.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "11:11 16.12.2025",
+                  "type": "icon",
+                  "center": {
+                    "x": 1834.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Meter",
+                  "type": "icon",
+                  "center": {
+                    "x": 50.0,
+                    "y": 999.0
+                  }
+                },
+                {
+                  "name": "Type here to search",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 962.0,
+                    "y": 797.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 829.0,
+                    "y": 287.0
+                  }
+                },
+                {
+                  "name": "SCENARIO MANAGEMENT",
+                  "type": "icon",
+                  "center": {
+                    "x": 949.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "View",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Help",
+                  "type": "icon",
+                  "center": {
+                    "x": 309.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Map",
+                  "type": "icon",
+                  "center": {
+                    "x": 219.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Center 39405.20940,022015.0019",
+                  "type": "icon",
+                  "center": {
+                    "x": 197.0,
+                    "y": 974.0
+                  }
+                },
+                {
+                  "name": "Tools",
+                  "type": "icon",
+                  "center": {
+                    "x": 263.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Debriefing",
+                  "type": "icon",
+                  "center": {
+                    "x": 113.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Provided scenario name already exists in scenario listl",
+                  "type": "icon",
+                  "center": {
+                    "x": 987.0,
+                    "y": 511.0
+                  }
+                },
+                {
+                  "name": "294921.00 m 18728334",
+                  "type": "icon",
+                  "center": {
+                    "x": 1832.0,
+                    "y": 978.0
+                  }
+                },
+                {
+                  "name": "Qur3or 4482267220,025'47.7203",
+                  "type": "icon",
+                  "center": {
+                    "x": 182.0,
+                    "y": 947.0
+                  }
+                },
+                {
+                  "name": "@ FIVE Forces in Virtua Environment",
+                  "type": "icon",
+                  "center": {
+                    "x": 112.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "icon",
+                  "center": {
+                    "x": 955.0,
+                    "y": 323.0
+                  }
+                },
+                {
+                  "name": "a checkbox.",
+                  "type": "icon",
+                  "center": {
+                    "x": 959.0,
+                    "y": 675.0
+                  }
+                },
+                {
+                  "name": "the Windows operating system.",
+                  "type": "icon",
+                  "center": {
+                    "x": 23.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 804.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Scroll up and down.",
+                  "type": "icon",
+                  "center": {
+                    "x": 883.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "Delete or trash.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1034.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "a grid or grid view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1003.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Microsoft 365",
+                  "type": "icon",
+                  "center": {
+                    "x": 362.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 35.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 755.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Home",
+                  "type": "icon",
+                  "center": {
+                    "x": 607.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Handprint or handprint functionality.",
+                  "type": "icon",
+                  "center": {
+                    "x": 913.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "A web browser or web browser application.",
+                  "type": "icon",
+                  "center": {
+                    "x": 943.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Movies & TV",
+                  "type": "icon",
+                  "center": {
+                    "x": 410.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Scanning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1900.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "&Save",
+                  "type": "icon",
+                  "center": {
+                    "x": 73.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Microsoft Edge Edge 2.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1790.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Google Chrome",
+                  "type": "icon",
+                  "center": {
+                    "x": 655.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Add",
+                  "type": "icon",
+                  "center": {
+                    "x": 1567.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Increase Up",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1141.0,
+                    "y": 473.0
+                  }
+                },
+                {
+                  "name": "TikTok",
+                  "type": "icon",
+                  "center": {
+                    "x": 1604.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Pinning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 315.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Account",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 74.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1815.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Bookmark",
+                  "type": "icon",
+                  "center": {
+                    "x": 1853.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1680.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Image",
+                  "type": "icon",
+                  "center": {
+                    "x": 559.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1134.0,
+                    "y": 253.0
+                  }
+                },
+                {
+                  "name": "Window",
+                  "type": "icon",
+                  "center": {
+                    "x": 461.0,
+                    "y": 1057.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1895.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Copy",
+                  "type": "icon",
+                  "center": {
+                    "x": 1850.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Toggle",
+                  "type": "icon",
+                  "center": {
+                    "x": 1705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "ok",
+                  "type": "icon",
+                  "center": {
+                    "x": 1131.0,
+                    "y": 565.0
+                  }
+                },
+                {
+                  "name": "WiFi",
+                  "type": "icon",
+                  "center": {
+                    "x": 1742.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Toggle (Ctrl+T)",
+                  "type": "icon",
+                  "center": {
+                    "x": 510.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "a grid view or grid layout.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1100.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Squares",
+                  "type": "icon",
+                  "center": {
+                    "x": 705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Warning",
+                  "type": "icon",
+                  "center": {
+                    "x": 793.0,
+                    "y": 516.0
+                  }
+                },
+                {
+                  "name": "Maximize window.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1157.0,
+                    "y": 401.0
+                  }
+                },
+                {
+                  "name": "a stopwatch function.",
+                  "type": "icon",
+                  "center": {
+                    "x": 5.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Formatting Marks",
+                  "type": "icon",
+                  "center": {
+                    "x": 778.0,
+                    "y": 472.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1913.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "View as full screen",
+                  "type": "icon",
+                  "center": {
+                    "x": 948.0,
+                    "y": 565.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 45.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 950.0,
+                    "y": 1079.0
+                  }
+                },
+                {
+                  "name": "a beach or ocean view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 853.0,
+                    "y": 1077.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1715.0,
+                    "y": 43.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1891.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 901.0,
+                    "y": 1078.0
+                  }
+                }
+              ],
+              "llm_view": "ID | Name | Type | (x,y)\n------------------------------------------------------------\n1 | Scenario | icon | (41.0,38.0)\n2 | &Save | icon | (73.0,75.0)\n3 | Add | icon | (1567.0,75.0)\n4 | SCENARIO MANAGEMENT | icon | (949.0,252.0)\n5 | Tactical Scenario | icon | (829.0,287.0)\n6 | Scenario Details | icon | (955.0,323.0)\n7 | Scenario Start Date | text | (856.0,391.0)\n8 | Duplicate Scenario Name | text | (860.0,475.0)\n9 | Provided scenario name already exists in | icon | (987.0,511.0)\n10 | Add New Scenario | icon | (962.0,797.0)",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 84
+            },
+            "state_after": {
+              "elements": [
+                {
+                  "name": "Name",
+                  "type": "text",
+                  "center": {
+                    "x": 820.0,
+                    "y": 360.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "text",
+                  "center": {
+                    "x": 856.0,
+                    "y": 391.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "text",
+                  "center": {
+                    "x": 843.0,
+                    "y": 432.0
+                  }
+                },
+                {
+                  "name": "Duplicate Scenario Name",
+                  "type": "text",
+                  "center": {
+                    "x": 860.0,
+                    "y": 475.0
+                  }
+                },
+                {
+                  "name": "Mtncts",
+                  "type": "text",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 958.0
+                  }
+                },
+                {
+                  "name": "16 [O 264",
+                  "type": "text",
+                  "center": {
+                    "x": 1713.0,
+                    "y": 983.0
+                  }
+                },
+                {
+                  "name": "Altuude 2423628",
+                  "type": "text",
+                  "center": {
+                    "x": 149.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "Elevaton <",
+                  "type": "text",
+                  "center": {
+                    "x": 237.0,
+                    "y": 1001.0
+                  }
+                },
+                {
+                  "name": "0 ( tx",
+                  "type": "text",
+                  "center": {
+                    "x": 1731.0,
+                    "y": 1062.0
+                  }
+                },
+                {
+                  "name": "16.12.2025 11:10.13",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 389.0
+                  }
+                },
+                {
+                  "name": "cogdoooo",
+                  "type": "icon",
+                  "center": {
+                    "x": 49.0,
+                    "y": 972.0
+                  }
+                },
+                {
+                  "name": "agentest",
+                  "type": "icon",
+                  "center": {
+                    "x": 1040.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "BR",
+                  "type": "icon",
+                  "center": {
+                    "x": 974.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "TUR",
+                  "type": "icon",
+                  "center": {
+                    "x": 1782.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "11:11 16.12.2025",
+                  "type": "icon",
+                  "center": {
+                    "x": 1834.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Meter",
+                  "type": "icon",
+                  "center": {
+                    "x": 50.0,
+                    "y": 999.0
+                  }
+                },
+                {
+                  "name": "Type here to search",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 962.0,
+                    "y": 797.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 829.0,
+                    "y": 287.0
+                  }
+                },
+                {
+                  "name": "SCENARIO MANAGEMENT",
+                  "type": "icon",
+                  "center": {
+                    "x": 948.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "View",
+                  "type": "icon",
+                  "center": {
+                    "x": 175.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Help",
+                  "type": "icon",
+                  "center": {
+                    "x": 309.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Map",
+                  "type": "icon",
+                  "center": {
+                    "x": 219.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Center 39405.20940,022015.0019",
+                  "type": "icon",
+                  "center": {
+                    "x": 197.0,
+                    "y": 974.0
+                  }
+                },
+                {
+                  "name": "Scenario",
+                  "type": "icon",
+                  "center": {
+                    "x": 41.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Tools",
+                  "type": "icon",
+                  "center": {
+                    "x": 263.0,
+                    "y": 38.0
+                  }
+                },
+                {
+                  "name": "Debriefing",
+                  "type": "icon",
+                  "center": {
+                    "x": 113.0,
+                    "y": 37.0
+                  }
+                },
+                {
+                  "name": "Provided scenario name already exists in scenario listl",
+                  "type": "icon",
+                  "center": {
+                    "x": 987.0,
+                    "y": 511.0
+                  }
+                },
+                {
+                  "name": "294921.00 m 18728334",
+                  "type": "icon",
+                  "center": {
+                    "x": 1832.0,
+                    "y": 978.0
+                  }
+                },
+                {
+                  "name": "Qur3or 4482267220,025'47.7203",
+                  "type": "icon",
+                  "center": {
+                    "x": 182.0,
+                    "y": 947.0
+                  }
+                },
+                {
+                  "name": "@ FIVE Forces in Virtua Environment",
+                  "type": "icon",
+                  "center": {
+                    "x": 112.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "icon",
+                  "center": {
+                    "x": 955.0,
+                    "y": 323.0
+                  }
+                },
+                {
+                  "name": "s90p3",
+                  "type": "icon",
+                  "center": {
+                    "x": 42.0,
+                    "y": 946.0
+                  }
+                },
+                {
+                  "name": "Maximize window",
+                  "type": "icon",
+                  "center": {
+                    "x": 960.0,
+                    "y": 676.0
+                  }
+                },
+                {
+                  "name": "the Windows operating system.",
+                  "type": "icon",
+                  "center": {
+                    "x": 23.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 804.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Scroll up and down.",
+                  "type": "icon",
+                  "center": {
+                    "x": 883.0,
+                    "y": 125.0
+                  }
+                },
+                {
+                  "name": "Delete or trash.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1034.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "a grid or grid view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1003.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Microsoft 365",
+                  "type": "icon",
+                  "center": {
+                    "x": 362.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Increase",
+                  "type": "icon",
+                  "center": {
+                    "x": 35.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Home",
+                  "type": "icon",
+                  "center": {
+                    "x": 607.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 755.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "A web browser or web browser application.",
+                  "type": "icon",
+                  "center": {
+                    "x": 943.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Handprint or handprint functionality.",
+                  "type": "icon",
+                  "center": {
+                    "x": 913.0,
+                    "y": 124.0
+                  }
+                },
+                {
+                  "name": "Movies & TV",
+                  "type": "icon",
+                  "center": {
+                    "x": 410.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Scanning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1900.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Microsoft Edge Bookmark",
+                  "type": "icon",
+                  "center": {
+                    "x": 1790.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "&Save",
+                  "type": "icon",
+                  "center": {
+                    "x": 73.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Google Chrome",
+                  "type": "icon",
+                  "center": {
+                    "x": 655.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Add",
+                  "type": "icon",
+                  "center": {
+                    "x": 1567.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Increase Up",
+                  "type": "icon",
+                  "center": {
+                    "x": 1753.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 1716.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1141.0,
+                    "y": 473.0
+                  }
+                },
+                {
+                  "name": "TikTok",
+                  "type": "icon",
+                  "center": {
+                    "x": 1604.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Pinning",
+                  "type": "icon",
+                  "center": {
+                    "x": 1641.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "More Options",
+                  "type": "icon",
+                  "center": {
+                    "x": 315.0,
+                    "y": 1060.0
+                  }
+                },
+                {
+                  "name": "Account",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 74.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1815.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Bookmark",
+                  "type": "icon",
+                  "center": {
+                    "x": 1853.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1680.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "Image",
+                  "type": "icon",
+                  "center": {
+                    "x": 559.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1134.0,
+                    "y": 253.0
+                  }
+                },
+                {
+                  "name": "ok",
+                  "type": "icon",
+                  "center": {
+                    "x": 1131.0,
+                    "y": 565.0
+                  }
+                },
+                {
+                  "name": "Microsoft Excel",
+                  "type": "icon",
+                  "center": {
+                    "x": 461.0,
+                    "y": 1057.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "icon",
+                  "center": {
+                    "x": 1895.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "Copy",
+                  "type": "icon",
+                  "center": {
+                    "x": 1850.0,
+                    "y": 10.0
+                  }
+                },
+                {
+                  "name": "Toggle",
+                  "type": "icon",
+                  "center": {
+                    "x": 1705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "WiFi",
+                  "type": "icon",
+                  "center": {
+                    "x": 1742.0,
+                    "y": 1059.0
+                  }
+                },
+                {
+                  "name": "a grid view or grid layout.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1100.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Properties",
+                  "type": "icon",
+                  "center": {
+                    "x": 510.0,
+                    "y": 1058.0
+                  }
+                },
+                {
+                  "name": "Squares",
+                  "type": "icon",
+                  "center": {
+                    "x": 705.0,
+                    "y": 1061.0
+                  }
+                },
+                {
+                  "name": "Warning",
+                  "type": "icon",
+                  "center": {
+                    "x": 793.0,
+                    "y": 516.0
+                  }
+                },
+                {
+                  "name": "Maximize window.",
+                  "type": "icon",
+                  "center": {
+                    "x": 1157.0,
+                    "y": 401.0
+                  }
+                },
+                {
+                  "name": "a stopwatch function.",
+                  "type": "icon",
+                  "center": {
+                    "x": 5.0,
+                    "y": 75.0
+                  }
+                },
+                {
+                  "name": "Formatting Marks",
+                  "type": "icon",
+                  "center": {
+                    "x": 778.0,
+                    "y": 472.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1913.0,
+                    "y": 11.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1678.0,
+                    "y": 44.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 950.0,
+                    "y": 1079.0
+                  }
+                },
+                {
+                  "name": "a beach or ocean view.",
+                  "type": "icon",
+                  "center": {
+                    "x": 853.0,
+                    "y": 1077.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1715.0,
+                    "y": 44.0
+                  }
+                },
+                {
+                  "name": "M0,0L9,0 4.5,5z",
+                  "type": "icon",
+                  "center": {
+                    "x": 1891.0,
+                    "y": 1078.0
+                  }
+                },
+                {
+                  "name": "a loading or buffering indicator.",
+                  "type": "icon",
+                  "center": {
+                    "x": 901.0,
+                    "y": 1078.0
+                  }
+                }
+              ],
+              "llm_view": "Format: (x,y) [Type] Name\n----------------------------------------\n(820,360) [text] Name\n(856,391) [text] Scenario Start Date\n(843,432) [text] Training Areas\n(860,475) [text] Duplicate Scenario Name\n(1716,958) [text] Mtncts\n(1713,983) [text] 16 [O 264\n(149,1001) [text] Altuude 2423628\n(237,1001) [text] Elevaton <\n(1731,1062) [text] 0 ( tx\n(1040,389) [icon] 16.12.2025 11:10.13\n(49,972) [icon] cogdoooo\n(1040,359) [icon] agentest\n(974,124) [icon] BR\n(1782,1058) [icon] TUR\n(1834,1058) [icon] 11:11 16.12.2025\n(50,999) [icon] Meter\n(175,1058) [icon] Type here to search\n(962,797) [icon] Add New Scenario\n(829,287) [icon] Tactical Scenario\n(948,252) [icon] SCENARIO MANAGEMENT\n(175,37) [icon] View\n(309,38) [icon] Help\n(219,38) [icon] Map\n(197,974) [icon] Center 39405.20940,022015.0019\n(41,38) [icon] Scenario\n(263,38) [icon] Tools\n(113,37) [icon] Debriefing\n(987,511) [icon] Provided scenario name already exists in scenario listl\n(1832,978) [icon] 294921.00 m 18728334\n(182,947) [icon] Qur3or 4482267220,025'47.7203\n(112,10) [icon] @ FIVE Forces in Virtua Environment\n(955,323) [icon] Scenario Details\n(42,946) [icon] s90p3\n(960,676) [icon] Maximize window\n(23,1059) [icon] the Windows operating system.\n(804,1059) [icon] Microsoft Excel\n(883,125) [icon] Scroll up and down.\n(1034,124) [icon] Delete or trash.\n(1003,124) [icon] a grid or grid view.\n(362,1059) [icon] Microsoft 365\n(35,75) [icon] Increase\n(607,1061) [icon] Home\n(755,1060) [icon] Microsoft Excel\n(943,124) [icon] A web browser or web browser application.\n(913,124) [icon] Handprint or handprint functionality.\n(410,1059) [icon] Movies & TV\n(1900,75) [icon] Scanning\n(1790,75) [icon] Microsoft Edge Bookmark\n(73,75) [icon] &Save\n(655,1061) [icon] Google Chrome\n(1567,75) [icon] Add\n(1753,75) [icon] Increase Up\n(1716,75) [icon] More Options\n(1141,473) [icon] Close\n(1604,75) [icon] TikTok\n(1641,75) [icon] Pinning\n(315,1060) [icon] More Options\n(1678,74) [icon] Account\n(1815,75) [icon] M0,0L9,0 4.5,5z\n(1853,75) [icon] Bookmark\n(1680,1059) [icon] M0,0L9,0 4.5,5z\n(559,1061) [icon] Image\n(1134,253) [icon] Close\n(1131,565) [icon] ok\n(461,1057) [icon] Microsoft Excel\n(1895,11) [icon] Close\n(1850,10) [icon] Copy\n(1705,1061) [icon] Toggle\n(1742,1059) [icon] WiFi\n(1100,431) [icon] a grid view or grid layout.\n(510,1058) [icon] Properties\n(705,1061) [icon] Squares\n(793,516) [icon] Warning\n(1157,401) [icon] Maximize window.\n(5,75) [icon] a stopwatch function.\n(778,472) [icon] Formatting Marks\n(1913,11) [icon] M0,0L9,0 4.5,5z\n(1678,44) [icon] M0,0L9,0 4.5,5z\n(950,1079) [icon] a loading or buffering indicator.\n(853,1077) [icon] a beach or ocean view.\n(1715,44) [icon] M0,0L9,0 4.5,5z\n(1891,1078) [icon] M0,0L9,0 4.5,5z\n(901,1078) [icon] a loading or buffering indicator.",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 83
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step": {
+        "test_step": "Click 'OK'",
+        "expected_result": "Dialog closes",
+        "note_to_llm": ""
+      },
+      "result": {
+        "status": "passed",
+        "attempts": 1,
+        "reason": "Success (WinDriver)",
+        "actions": [
+          {
+            "action_id": "step_5",
+            "plan": {
+              "reasoning": "User requested to click 'OK'. The closest button to the right of 'Duplicate Scenario Name' is 'OK' at (1131.0,565.0).",
+              "action_id": "step_5",
+              "coords_space": "physical",
+              "steps": [
+                {
+                  "type": "click",
+                  "button": "left",
+                  "click_count": 1,
+                  "target": {
+                    "point": {
+                      "x": 1131.0,
+                      "y": 565.0
+                    }
+                  }
+                },
+                {
+                  "type": "wait",
+                  "ms": 500
+                }
+              ]
+            },
+            "ack": {
+              "action_id": "step_5",
+              "applied": 2,
+              "status": "ok",
+              "timestamp": 1765872701852
+            },
+            "state_before": {
+              "elements": [
+                {
+                  "name": "Duplicate Scenario Name",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 540.0
+                  }
+                },
+                {
+                  "name": "Provided scenario name already exists in scenario list!",
+                  "type": "text",
+                  "center": {
+                    "x": 987.0,
+                    "y": 511.0
+                  }
+                },
+                {
+                  "name": "System",
+                  "type": "unknown",
+                  "center": {
+                    "x": 775.0,
+                    "y": 477.0
+                  }
+                },
+                {
+                  "name": "Close",
+                  "type": "button",
+                  "center": {
+                    "x": 1140.0,
+                    "y": 474.0
+                  }
+                },
+                {
+                  "name": "OK",
+                  "type": "button",
+                  "center": {
+                    "x": 1131.0,
+                    "y": 565.0
+                  }
+                }
+              ],
+              "llm_view": "ID | Name | Type | (x,y)\n------------------------------------------------------------\n1 | Close | button | (1140.0,474.0)\n2 | Duplicate Scenario Name | container | (960.0,540.0)\n3 | OK | button | (1131.0,565.0)",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 5,
+              "_debug": {
+                "ocr_skipped": "disabled",
+                "yolo_skipped": "disabled_or_not_ready",
+                "dedupe_count": 4
+              }
+            },
+            "state_after": {
+              "elements": [
+                {
+                  "name": "appBgTransparent",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 540.0
+                  }
+                },
+                {
+                  "name": "appDialogTitle",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "appBgTransparent",
+                  "type": "container",
+                  "center": {
+                    "x": 960.0,
+                    "y": 552.0
+                  }
+                },
+                {
+                  "name": "Scenario Management",
+                  "type": "text",
+                  "center": {
+                    "x": 943.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "X",
+                  "type": "button",
+                  "center": {
+                    "x": 1133.0,
+                    "y": 252.0
+                  }
+                },
+                {
+                  "name": "Tactical Scenario",
+                  "type": "unknown",
+                  "center": {
+                    "x": 830.0,
+                    "y": 288.0
+                  }
+                },
+                {
+                  "name": "Add New Scenario",
+                  "type": "button",
+                  "center": {
+                    "x": 960.0,
+                    "y": 797.0
+                  }
+                },
+                {
+                  "name": "Scenario Details",
+                  "type": "text",
+                  "center": {
+                    "x": 960.0,
+                    "y": 326.0
+                  }
+                },
+                {
+                  "name": "Training Areas",
+                  "type": "text",
+                  "center": {
+                    "x": 876.0,
+                    "y": 431.0
+                  }
+                },
+                {
+                  "name": "Scenario Start Date",
+                  "type": "text",
+                  "center": {
+                    "x": 876.0,
+                    "y": 390.0
+                  }
+                },
+                {
+                  "name": "Name",
+                  "type": "text",
+                  "center": {
+                    "x": 876.0,
+                    "y": 359.0
+                  }
+                },
+                {
+                  "name": "Description",
+                  "type": "text",
+                  "center": {
+                    "x": 960.0,
+                    "y": 475.0
+                  }
+                }
+              ],
+              "llm_view": "Format: (x,y) [Type] Name\n----------------------------------------\n(960,540) [container] appBgTransparent\n(960,252) [container] appDialogTitle\n(960,552) [container] appBgTransparent\n(943,252) [text] Scenario Management\n(1133,252) [button] X\n(830,288) [unknown] Tactical Scenario\n(960,797) [button] Add New Scenario\n(960,326) [text] Scenario Details\n(876,431) [text] Training Areas\n(876,390) [text] Scenario Start Date\n(876,359) [text] Name\n(960,475) [text] Description",
+              "screen": {
+                "dpiX": 96,
+                "dpiY": 96,
+                "h": 1080,
+                "w": 1920
+              },
+              "count": 12,
+              "_debug": {
+                "ocr_skipped": "disabled",
+                "yolo_skipped": "disabled_or_not_ready",
+                "dedupe_count": 12
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "execution_duration": 102.82
+}

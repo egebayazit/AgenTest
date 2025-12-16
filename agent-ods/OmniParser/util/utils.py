@@ -18,17 +18,7 @@ import numpy as np
 # %matplotlib inline
 from matplotlib import pyplot as plt
 import easyocr
-from paddleocr import PaddleOCR
-reader = easyocr.Reader(['en'])
-paddle_ocr = PaddleOCR(
-    lang='en',  # other lang also available
-    use_angle_cls=False,
-    use_gpu=False,  # using cuda will conflict with pytorch in the same process
-    show_log=False,
-    max_batch_size=1024,
-    use_dilation=True,  # improves accuracy
-    det_db_score_mode='slow',  # improves accuracy
-    rec_batch_num=1024)
+# from paddleocr import PaddleOCR  # Disabled - using EasyOCR instead
 import time
 import base64
 
@@ -42,6 +32,10 @@ from torchvision.transforms import ToPILImage
 import supervision as sv
 import torchvision.transforms as T
 from util.box_annotator import BoxAnnotator 
+
+# Initialize EasyOCR with GPU support
+reader = easyocr.Reader(['en'], gpu=True)
+paddle_ocr = None  # Disabled PaddleOCR
 
 
 def get_caption_model_processor(model_name, model_name_or_path="Salesforce/blip2-opt-2.7b", device=None):
@@ -509,7 +503,7 @@ def check_ocr_box(image_source: Union[str, Image.Image], display_img = True, out
         image_source = image_source.convert('RGB')
     image_np = np.array(image_source)
     w, h = image_source.size
-    if use_paddleocr:
+    if use_paddleocr and paddle_ocr is not None:
         if easyocr_args is None:
             text_threshold = 0.5
         else:
@@ -517,7 +511,7 @@ def check_ocr_box(image_source: Union[str, Image.Image], display_img = True, out
         result = paddle_ocr.ocr(image_np, cls=False)[0]
         coord = [item[0] for item in result if item[1][1] > text_threshold]
         text = [item[1][0] for item in result if item[1][1] > text_threshold]
-    else:  # EasyOCR
+    else:  # EasyOCR (default)
         if easyocr_args is None:
             easyocr_args = {}
         result = reader.readtext(image_np, **easyocr_args)

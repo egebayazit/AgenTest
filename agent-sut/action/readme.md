@@ -244,7 +244,7 @@ action/
   "steps": [
     { "type": "move",  "point": { "x": 200, "y": 200 }, "settle_ms": 120 },
     { "type": "click", "button": "left", "target": { "point": { "x": 200, "y": 200 } } },
-    { "type": "type",  "text": "Merhaba çğö 🙂", "delay_ms": 5, "enter": true }
+    { "type": "type",  "text": "Merhaba ", "delay_ms": 5, "enter": true }
   ]
 }
 ```
