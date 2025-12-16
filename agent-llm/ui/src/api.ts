@@ -106,6 +106,11 @@ const api = {
     async getTestDetails(testName: string): Promise<any> {
         const resp = await axios.get(`${API_BASE}/get-test/${encodeURIComponent(testName)}`);
         return resp.data;
+    },
+
+    // Stop execution
+    async stopExecution(): Promise<void> {
+        await axios.post(`${API_BASE}/stop`);
     }
 };
 

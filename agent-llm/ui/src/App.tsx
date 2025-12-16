@@ -19,7 +19,8 @@ import {
     Timer,
     FolderOpen,
     Bot,
-    Pencil
+    Pencil,
+    Square
 } from 'lucide-react';
 import api, { SavedTest, TestStep, ScenarioResult, StepOutcome } from './api';
 
@@ -330,6 +331,15 @@ function App() {
             }
         } catch (e: any) {
             alert('Failed to load test for editing: ' + (e.response?.data?.detail || e.message));
+        }
+    };
+
+    // Stop execution
+    const stopExecution = async () => {
+        try {
+            await api.stopExecution();
+        } catch (e: any) {
+            console.error('Stop failed', e);
         }
     };
 
@@ -670,23 +680,29 @@ function App() {
                                     <button className="btn btn-secondary" onClick={addStep}>
                                         <Plus size={16} /> Add Step
                                     </button>
-                                    <button
-                                        className="btn btn-primary btn-lg"
-                                        onClick={runScenario}
-                                        disabled={isRunning || !isOnline}
-                                        style={{ marginLeft: 'auto' }}
-                                    >
-                                        {isRunning ? (
-                                            <>
-                                                <div className="spinner" style={{ width: 16, height: 16 }} />
-                                                Running...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Play size={16} /> Run Test
-                                            </>
-                                        )}
-                                    </button>
+                                    {isRunning ? (
+                                        <button
+                                            className="btn btn-lg"
+                                            onClick={stopExecution}
+                                            style={{
+                                                marginLeft: 'auto',
+                                                background: '#dc2626',
+                                                color: 'white',
+                                                border: 'none'
+                                            }}
+                                        >
+                                            <Square size={16} fill="white" /> Stop
+                                        </button>
+                                    ) : (
+                                        <button
+                                            className="btn btn-primary btn-lg"
+                                            onClick={runScenario}
+                                            disabled={!isOnline}
+                                            style={{ marginLeft: 'auto' }}
+                                        >
+                                            <Play size={16} /> Run Test
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -706,6 +722,25 @@ function App() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', borderBottom: '1px solid var(--gray-100)', paddingBottom: '0.5rem' }}>
                                 <div className="spinner" style={{ width: '14px', height: '14px' }} />
                                 <span style={{ color: 'var(--gray-600)', fontWeight: 500, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Execution Log</span>
+                                <button
+                                    onClick={stopExecution}
+                                    style={{
+                                        marginLeft: 'auto',
+                                        background: '#dc2626',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '0.4rem 0.75rem',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 500,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.35rem'
+                                    }}
+                                >
+                                    <Square size={12} fill="white" /> Stop
+                                </button>
                             </div>
                             <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8rem', lineHeight: '1.6' }}>
                                 {executionLogs.map((log, idx) => (

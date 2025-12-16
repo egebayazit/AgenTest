@@ -125,6 +125,9 @@ app.add_middleware(
 # Custom logging handler to capture logs for UI
 ui_logs: List[str] = []
 
+# Global execution control
+execution_cancelled = False
+
 class UILogHandler(logging.Handler):
     """Captures logs with emojis for UI display."""
     
@@ -465,6 +468,15 @@ async def get_logs() -> Dict[str, Any]:
     return {"logs": ui_logs}
 
 
+@app.post("/stop")
+async def stop_execution() -> Dict[str, Any]:
+    """Stop the currently running test execution"""
+    global execution_cancelled
+    execution_cancelled = True
+    logger.info("🛑 Stop requested by user")
+    return {"status": "ok", "message": "Stop requested"}
+
+
 @app.get("/config", response_model=ConfigOut)
 async def get_config() -> ConfigOut:
     """Get current configuration"""
@@ -569,6 +581,14 @@ async def run_scenario(body: RunIn) -> Dict[str, Any]:
     # Clear previous UI logs
     ui_logs.clear()
     
+    # Reset cancellation flag
+    global execution_cancelled
+    execution_cancelled = False
+    
+    # Cancel check callback
+    def check_cancelled():
+        return execution_cancelled
+    
     # Execute scenario (logs captured automatically by UILogHandler)
     started = time.time()
     try:
@@ -576,7 +596,8 @@ async def run_scenario(body: RunIn) -> Dict[str, Any]:
             scenario_name=body.scenario_name,
             steps=steps_def,
             temperature=body.temperature,
-            save_recording=True
+            save_recording=True,
+            cancel_check=check_cancelled
         )
     except BackendError as be:
         logger.exception("Backend error during scenario execution")

@@ -263,6 +263,7 @@ class ExpectedResultValidator:
         
         for ctype, verbs in self.ACTION_VERBS.items():
             if any(v in text_lower for v in verbs):
+            #if any(re.search(rf'\b{re.escape(v)}\b', text_lower) for v in verbs):
                 cond_type = ctype
                 break
         
@@ -504,7 +505,8 @@ class LLMBackend:
         *, 
         temperature: float = 0.1,
         save_recording: bool = True,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        cancel_check: Optional[callable] = None
     ) -> ScenarioResult:
         
         if not steps: raise ValueError("steps required")
@@ -528,6 +530,11 @@ class LLMBackend:
         emit(f"🎬 STARTING SCENARIO: {scenario_name}")
         
         for idx, step in enumerate(steps, 1):
+            # Check for cancellation before each step
+            if cancel_check and cancel_check():
+                emit("🛑 EXECUTION STOPPED BY USER")
+                return ScenarioResult("stopped", outcomes, final_state, "User cancelled")
+            
             emit(f"📍 STEP {idx}/{len(steps)}: {step.test_step}")
             
             result = await self.run_step(
@@ -536,7 +543,8 @@ class LLMBackend:
                 step.note_to_llm, 
                 recent_actions=history, 
                 temperature=temperature,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                cancel_check=cancel_check
             )
             
             outcomes.append(ScenarioStepOutcome(step, result))
@@ -606,7 +614,7 @@ class LLMBackend:
                 # Eğer son adım değilse, adımlar arası UI'ın kendine gelmesi için
                 # küçük bir 'wait' ekle (Örn: 500ms). Bu, 'Blind Replay' güvenliğini artırır.
                 if i < len(plans) - 1:
-                    merged_steps.append({"type": "wait", "ms": 500})
+                    merged_steps.append({"type": "wait", "ms": 1000})
             
             # Execution sonuçlarını kaydet (See Results için)
             execution_result = None
@@ -657,7 +665,7 @@ class LLMBackend:
         except Exception as e:
             logger.error("⚠️ Failed to save merged recording: %s", e)
 
-    async def run_step(self, test_step: str, expected_result: str, note_to_llm: Optional[str] = None, *, recent_actions=None, temperature=0.1, progress_callback: Optional[callable] = None) -> RunResult:
+    async def run_step(self, test_step: str, expected_result: str, note_to_llm: Optional[str] = None, *, recent_actions=None, temperature=0.1, progress_callback: Optional[callable] = None, cancel_check: Optional[callable] = None) -> RunResult:
         
         # Helper to emit progress
         def emit(msg: str):
@@ -669,6 +677,11 @@ class LLMBackend:
         state = {}
         
         for attempt in range(1, self.max_attempts + 1):
+            # Check for cancellation at each attempt
+            if cancel_check and cancel_check():
+                emit("🛑 EXECUTION STOPPED BY USER")
+                return RunResult("stopped", attempt, actions_log, state, None, "User cancelled")
+            
             method = "WinDriver" if attempt == 1 else "ODS"
             emit(f"🔄 Attempt {attempt}/{self.max_attempts} ({method})")
             
@@ -708,11 +721,46 @@ class LLMBackend:
             
             # Plan
             emit("📤 SENDING TO LLM...")
+            
+            # Check for cancellation before LLM request
+            if cancel_check and cancel_check():
+                emit("🛑 EXECUTION STOPPED BY USER")
+                return RunResult("stopped", attempt, actions_log, state, None, "User cancelled")
+            
             try:
-                plan, llm_view = await self._request_plan(test_step=test_step, expected_result=expected_result, note_to_llm=note_to_llm, state=state, recent_actions=recent_actions or [], temperature=temperature, attempt_number=attempt)
+                # Create task for LLM request so we can poll for cancellation
+                llm_task = asyncio.create_task(
+                    self._request_plan(
+                        test_step=test_step, 
+                        expected_result=expected_result, 
+                        note_to_llm=note_to_llm, 
+                        state=state, 
+                        recent_actions=recent_actions or [], 
+                        temperature=temperature, 
+                        attempt_number=attempt
+                    )
+                )
+                
+                # Poll for cancellation while waiting for LLM
+                while not llm_task.done():
+                    if cancel_check and cancel_check():
+                        llm_task.cancel()
+                        emit("🛑 EXECUTION STOPPED BY USER")
+                        return RunResult("stopped", attempt, actions_log, state, None, "User cancelled")
+                    await asyncio.sleep(0.5)  # Check every 500ms
+                
+                plan, llm_view = await llm_task
+            except asyncio.CancelledError:
+                emit("🛑 EXECUTION STOPPED BY USER")
+                return RunResult("stopped", attempt, actions_log, state, None, "User cancelled")
             except Exception as e:
                 emit(f"❌ Planning failed: {e}")
                 continue
+            
+            # Check for cancellation after LLM request
+            if cancel_check and cancel_check():
+                emit("🛑 EXECUTION STOPPED BY USER")
+                return RunResult("stopped", attempt, actions_log, state, None, "User cancelled")
             
             steps = plan.get("steps", [])
             
@@ -726,6 +774,12 @@ class LLMBackend:
             # Execute
             emit("⚡ EXECUTING ACTION...")
             state_before = state  # Keep original state for validation
+            
+            # Check for cancellation before action
+            if cancel_check and cancel_check():
+                emit("🛑 EXECUTION STOPPED BY USER")
+                return RunResult("stopped", attempt, actions_log, state, None, "User cancelled")
+            
             try:
                 ack = await self._send_action(plan)
             except Exception as e:
@@ -890,7 +944,8 @@ class LLMBackend:
     
     async def _request_plan_ollama(self, messages: List, temperature: float) -> Dict:
         async with httpx.AsyncClient(timeout=self.llm_timeout) as client:
-            resp = await client.post(f"{self.llm_base_url}/api/chat", json={"model": self.model, "messages": messages, "stream": False, "format": AGEN_TEST_PLAN_SCHEMA, "options": {"temperature": temperature}})
+            #resp = await client.post(f"{self.llm_base_url}/api/chat", json={"model": self.model, "messages": messages, "stream": False, "format": AGEN_TEST_PLAN_SCHEMA, "options": {"temperature": temperature}})
+            resp = await client.post(f"{self.llm_base_url}/api/chat", json={"model": self.model, "messages": messages, "stream": False, "format": "json", "options": {"temperature": temperature}})
             return self._parse_plan(resp.json()["message"]["content"])
     
     async def _request_plan_llamacpp(self, messages: List, temperature: float) -> Dict:

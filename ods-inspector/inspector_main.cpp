@@ -7,12 +7,18 @@
 #include <iostream>
 #include <thread>
 #include <iomanip>
+#include <cstdlib>
 
 // Windows headers (after httplib to avoid winsock conflicts)
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
 #include <windowsx.h>
+
+// UI Automation for WinDriver support
+#include <UIAutomation.h>
+#include <comdef.h>
+#pragma comment(lib, "Uiautomationcore.lib")
 
 // Local utilities
 #include "win/capture.h"
@@ -21,13 +27,92 @@
 using json = nlohmann::json;
 using namespace std;
 
-// Configuration
-const std::string ODS_API_HOST = "10.182.6.60";
+// Configuration - ODS_HOST env var overrides default
+std::string GetOdsHost() {
+    const char* env = std::getenv("ODS_HOST");
+    return env ? std::string(env) : "10.182.6.60";
+}
 const int ODS_API_PORT = 8000;
 const std::string ENDPOINT_GET_ID = "/get-id-from-ods";
 const std::string ENDPOINT_GET_COORDS = "/get-coords-from-ods";
 
 HHOOK hKeyboardHook = NULL;
+IUIAutomation* g_pAutomation = NULL;
+
+// ============================================================================
+// WIN ELEMENT STRUCT
+// ============================================================================
+struct WinElement {
+    std::wstring name;
+    std::wstring automationId;
+    std::wstring value;
+    bool found = false;
+};
+
+// ============================================================================
+// WSTRING TO UTF8 HELPER
+// ============================================================================
+std::string WideToUtf8(const std::wstring& wstr) {
+    if (wstr.empty()) return "";
+    int size = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), (int)wstr.size(), nullptr, 0, nullptr, nullptr);
+    if (size <= 0) return "";
+    std::string result(size, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), (int)wstr.size(), &result[0], size, nullptr, nullptr);
+    return result;
+}
+
+// ============================================================================
+// GET WIN ELEMENT AT POINT (UI Automation)
+// ============================================================================
+WinElement GetWinElementAtPoint(int x, int y) {
+    WinElement result;
+    
+    if (!g_pAutomation) {
+        return result;
+    }
+    
+    POINT pt = { x, y };
+    IUIAutomationElement* pElement = nullptr;
+    
+    HRESULT hr = g_pAutomation->ElementFromPoint(pt, &pElement);
+    if (FAILED(hr) || !pElement) {
+        return result;
+    }
+    
+    result.found = true;
+    
+    // Get Name
+    BSTR bstrName = nullptr;
+    hr = pElement->get_CurrentName(&bstrName);
+    if (SUCCEEDED(hr) && bstrName) {
+        result.name = std::wstring(bstrName, SysStringLen(bstrName));
+        SysFreeString(bstrName);
+    }
+    
+    // Get AutomationId
+    BSTR bstrId = nullptr;
+    hr = pElement->get_CurrentAutomationId(&bstrId);
+    if (SUCCEEDED(hr) && bstrId) {
+        result.automationId = std::wstring(bstrId, SysStringLen(bstrId));
+        SysFreeString(bstrId);
+    }
+    
+    // Get Value (from IValueProvider pattern)
+    IValueProvider* pValueProvider = nullptr;
+    hr = pElement->GetCurrentPattern(UIA_ValuePatternId, (IUnknown**)&pValueProvider);
+    if (SUCCEEDED(hr) && pValueProvider) {
+        BSTR bstrValue = nullptr;
+        hr = pValueProvider->get_Value(&bstrValue);
+        if (SUCCEEDED(hr) && bstrValue) {
+            result.value = std::wstring(bstrValue, SysStringLen(bstrValue));
+            SysFreeString(bstrValue);
+        }
+        pValueProvider->Release();
+    }
+    
+    pElement->Release();
+    return result;
+}
 
 // ============================================================================
 // CLIPBOARD HELPER
@@ -77,9 +162,10 @@ std::string CaptureScreenToBase64() {
 }
 
 // ============================================================================
-// F4 HANDLER: Koordinattan Element Bulma
+// F4/F3 HANDLER: Koordinattan Element Bulma
+// removeHover: true = fareyi köşeye taşı (hover efektini kaldır)
 // ============================================================================
-void HandleF4Press(int mouse_x, int mouse_y) {
+void HandleF4Press(int mouse_x, int mouse_y, bool removeHover = false) {
     // Initialize COM for this thread (required for WIC)
     HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     if (FAILED(hr)) {
@@ -88,89 +174,80 @@ void HandleF4Press(int mouse_x, int mouse_y) {
     }
 
     try {
-        std::cout << "\n[F4 Pressed: Find Element by Coords]\n";
-        std::cout << "Capturing screenshot...\n";
-
-        // 1. Screenshot al
-        std::string base64_image = CaptureScreenToBase64();
-        if (base64_image.empty()) {
-            std::cerr << "Screenshot capture failed!\n";
-            CoUninitialize();
-            return;
+        if (removeHover) {
+            std::cout << "\n[F3 Pressed: Find Element (No Hover)]\n";
+            // Fareyi ekranın sol üst köşesine taşı (hover'ı kaldır)
+            SetCursorPos(0, 0);
+            Sleep(100); // UI'ın hover state'i kaldırması için bekle
+        } else {
+            std::cout << "\n[F4 Pressed: Find Element by Coords]\n";
         }
+        std::cout << "Coordinates: (" << mouse_x << ", " << mouse_y << ")\n";
 
-        // Parse PNG dimensions from base64 (Unused, but kept for completeness)
-        int screenshot_width = 1920;   // Default
-        int screenshot_height = 1200;  // Default
+        // ============================================
+        // ODS Element Info
+        // ============================================
+        std::cout << "==========================================\n";
+        std::cout << "[ODS]\n";
         
-        if (base64_image.length() >= 44) {
-            std::string header_b64 = base64_image.substr(0, 44);
-            std::string decoded = base64_decode(header_b64);
-            if (decoded.length() >= 24) {
-                screenshot_width = ((unsigned char)decoded[16] << 24) | 
-                                  ((unsigned char)decoded[17] << 16) |
-                                  ((unsigned char)decoded[18] << 8) |
-                                  ((unsigned char)decoded[19]);
-                screenshot_height = ((unsigned char)decoded[20] << 24) |
-                                   ((unsigned char)decoded[21] << 16) |
-                                   ((unsigned char)decoded[22] << 8) |
-                                   ((unsigned char)decoded[23]);
+        std::string base64_image = CaptureScreenToBase64();
+        
+        // Fare pozisyonunu geri getir (removeHover modunda)
+        if (removeHover) {
+            SetCursorPos(mouse_x, mouse_y);
+        }
+        
+        if (base64_image.empty()) {
+            std::cout << "  [!] Screenshot capture failed\n";
+        } else {
+            json request_body;
+            request_body["base64_image"] = base64_image;
+            request_body["x"] = mouse_x;
+            request_body["y"] = mouse_y;
+
+            httplib::Client client(GetOdsHost(), ODS_API_PORT);
+            client.set_read_timeout(30, 0);  // Reduced timeout
+            client.set_write_timeout(10, 0);
+            client.set_connection_timeout(5, 0);
+
+            auto res = client.Post(ENDPOINT_GET_ID.c_str(), 
+                                   request_body.dump(), 
+                                   "application/json");
+
+            if (!res) {
+                std::cout << "  [!] ODS server not reachable\n";
+            } else if (res->status != 200) {
+                std::cout << "  [!] ODS error: HTTP " << res->status << "\n";
+            } else {
+                json response = json::parse(res->body);
+                std::string status = response["status"];
+
+                if (status == "success") {
+                    std::string content_name = response["content_name"];
+                    int element_id = response["element_id"];
+                    
+                    std::cout << "  name : \"" << content_name << "\"\n";
+                    std::cout << "  id   : " << element_id << "\n";
+                } else {
+                    std::string message = response.value("message", "No element found");
+                    std::cout << "  [!] " << message << "\n";
+                }
             }
         }
 
-        std::cout << "Calling " << ENDPOINT_GET_ID << "...\n";
-
-        // 2. JSON request oluştur
-        json request_body;
-        request_body["base64_image"] = base64_image;
-        request_body["x"] = mouse_x;  // Direct coordinates
-        request_body["y"] = mouse_y;  // Direct coordinates
-
-        // 3. HTTP POST request
-        httplib::Client client(ODS_API_HOST, ODS_API_PORT);
-        client.set_read_timeout(120, 0);  // 120 seconds
-        client.set_write_timeout(30, 0);  // 30 seconds
-        client.set_keep_alive(true);
-
-        auto res = client.Post(ENDPOINT_GET_ID.c_str(), 
-                               request_body.dump(), 
-                               "application/json");
-
-
-        // 4. Response kontrolü
-        if (!res) {
-            std::cerr << "API Error: No response received\n";
-            CoUninitialize();
-            return;
-        }
-
-
-        if (res->status != 200) {
-            std::cerr << "API Error: HTTP " << res->status << "\n";
-            CoUninitialize();
-            return;
-        }
-
-
-        // 5. JSON response parse et
-        json response = json::parse(res->body);
-        std::string status = response["status"];
-
+        // ============================================
+        // WINDRIVER (UI Automation) Element Info
+        // ============================================
         std::cout << "==========================================\n";
-
-        if (status == "success") {
-            std::string content_name = response["content_name"];
-            int element_id = response["element_id"];
-            
-            std::cout << "Element Found:\n";
-            std::cout << "  Content Name : \"" << content_name << "\"\n";
-            std::cout << "  Element ID   : " << element_id << "\n";
-            std::cout << "  Coordinates  : (" << mouse_x << ", " << mouse_y << ")\n";
+        std::cout << "[WINDRIVER]\n";
+        WinElement winElem = GetWinElementAtPoint(mouse_x, mouse_y);
+        if (winElem.found) {
+            std::cout << "  name  : \"" << WideToUtf8(winElem.name) << "\"\n";
+            std::cout << "  id    : \"" << WideToUtf8(winElem.automationId) << "\"\n";
+            std::cout << "  value : \"" << WideToUtf8(winElem.value) << "\"\n";
         } else {
-            std::string message = response.value("message", "No element found");
-            std::cout << "\n[!] " << message << "\n";
+            std::cout << "  [!] No Win element found at this point\n";
         }
-
         std::cout << "==========================================\n\n";
 
     } catch (const std::exception& e) {
@@ -179,6 +256,7 @@ void HandleF4Press(int mouse_x, int mouse_y) {
 
     CoUninitialize();
 }
+
 
 // ============================================================================
 // F5 HANDLER: Element İsminden Koordinat Bulma
@@ -221,7 +299,7 @@ void HandleF5Press() {
         request_body["content_id"] = clipboard_text;
 
         // 4. HTTP POST request
-        httplib::Client client(ODS_API_HOST, ODS_API_PORT);
+        httplib::Client client(GetOdsHost(), ODS_API_PORT);
         client.set_read_timeout(120, 0);  // 120 seconds
         client.set_write_timeout(30, 0);
         client.set_keep_alive(true);
@@ -305,12 +383,23 @@ LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     KBDLLHOOKSTRUCT* pKeyboard = (KBDLLHOOKSTRUCT*)lParam;
 
     switch (pKeyboard->vkCode) {
+        case VK_F3: {
+            // F3: Hover efekti olmadan inspect (fare köşeye taşınır)
+            std::thread f3Thread([]() {
+                POINT pt;
+                GetCursorPos(&pt);
+                HandleF4Press(pt.x, pt.y, true);  // removeHover = true
+            });
+            f3Thread.detach();
+            break;
+        }
+
         case VK_F4: {
-            // F4 tuşuna basıldığında fare koordinatlarını al ve F4 işleyicisini ayrı bir thread'de başlat
+            // F4: Normal inspect (hover dahil)
             std::thread f4Thread([]() {
                 POINT pt;
                 GetCursorPos(&pt);
-                HandleF4Press(pt.x, pt.y);
+                HandleF4Press(pt.x, pt.y, false);  // removeHover = false
             });
             f4Thread.detach();
             break;
@@ -344,20 +433,30 @@ int main() {
         return 1;
     }
 
+    // Initialize UI Automation for WinDriver support
+    hr = CoCreateInstance(CLSID_CUIAutomation, NULL, CLSCTX_INPROC_SERVER, 
+                          IID_IUIAutomation, (void**)&g_pAutomation);
+    if (FAILED(hr) || !g_pAutomation) {
+        std::cerr << "Warning: Failed to initialize UI Automation (WinDriver will be disabled)\n";
+    }
+
     // Console encoding (Set to UTF-8 for better compatibility)
     SetConsoleOutputCP(CP_UTF8);
     
     // Tüm loglar std::cout ile yapılıyor
-    std::cout << "=== ODS INSPECTOR ===\n";
-    std::cout << "F4: Find element at cursor\n";
-    std::cout << "F5: Find coordinates by name (from clipboard)\n";
-    std::cout << "Server: http://" << ODS_API_HOST << ":" << ODS_API_PORT << "\n";
-    std::cout << "====================\n\n";
+    std::cout << "=== ODS + WINDRIVER INSPECTOR ===\n";
+    std::cout << "F3: Find element (no hover)\n";
+    std::cout << "F4: Find element (with hover)\n";
+    std::cout << "F5: Find coordinates by name (clipboard)\n";
+    std::cout << "ODS Server: http://" << GetOdsHost() << ":" << ODS_API_PORT << "\n";
+    std::cout << "WinDriver: " << (g_pAutomation ? "Active" : "Disabled") << "\n";
+    std::cout << "=================================\n\n";
 
     // Install keyboard hook
     hKeyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardProc, NULL, 0);
     if (!hKeyboardHook) {
         std::cerr << "Failed to install keyboard hook!\n";
+        if (g_pAutomation) g_pAutomation->Release();
         CoUninitialize();
         return 1;
     }
@@ -374,6 +473,10 @@ int main() {
     // Cleanup
     if (hKeyboardHook) {
         UnhookWindowsHookEx(hKeyboardHook);
+    }
+    if (g_pAutomation) {
+        g_pAutomation->Release();
+        g_pAutomation = NULL;
     }
 
     CoUninitialize();

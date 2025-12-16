@@ -1,26 +1,51 @@
-# Agent Inspector
+# ODS + WinDriver Inspector
 
-ODS (Omniparser) tabanlı UI element inspector aracı.
+UI element inspector aracı - ODS (Omniparser) ve Windows UI Automation desteği.
 
-## Gereksinimler
-- omniparserserver çalışır durumda olmalı (port 8000)
-- Windows 10/11
+## Özellikler
+
+- **F3**: Element bul (hover yok - fare köşeye taşınır, screenshot alınır)
+- **F4**: Element bul (hover dahil - mevcut durum)
+- **F5**: Clipboard'daki isimle element bul (ODS)
+
+## Çıktı Formatı
+
+```
+[ODS]
+  name : "Button Text"
+  id   : 42
+
+[WINDRIVER]
+  name  : "Button Text"
+  id    : "btnSubmit"
+  value : ""
+```
 
 ## Kullanım
 
-1. inspector.exe'yi çalıştır
-2. **F4**: Fare imlecinin altındaki elementi bul
-3. **F5**: Clipboard'daki isimle eşleşen elementleri bul
+### SUT PC'de (Varsayılan)
+```powershell
+.\inspector.exe
+# ODS Server: http://10.182.6.60:8000
+```
+
+### Lokal Test (Kendi Makinende)
+```powershell
+$env:ODS_HOST = "localhost"
+.\inspector.exe
+# ODS Server: http://localhost:8000
+```
+
+## Gereksinimler
+- OmniParser server çalışır durumda (port 8000)
+- Windows 10/11
 
 ## Build
 
-```bash
-mkdir build && cd build
-cmake ..
-cmake --build .
+```powershell
+mkdir build; cd build
+cmake .. -G "Visual Studio 17 2022" -A x64
+cmake --build . --config Release
 ```
 
-## API Endpoints
-
-- `POST /get-id-from-ods` - Koordinattan element bulma
-- `POST /get-coords-from-ods` - Element isminden koordinat bulma
+Çıktı: `build/Release/inspector.exe`
