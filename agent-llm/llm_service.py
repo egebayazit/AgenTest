@@ -31,6 +31,7 @@ from llm_backend import (
     ScenarioResult,
     ScenarioStepOutcome,
     LLAMACPP_AVAILABLE,
+    ANTHROPIC_AVAILABLE,
 )
 
 logging.basicConfig(
@@ -38,6 +39,13 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("llm_service")
+
+# Debug: Show provider availability on startup
+logger.info("=" * 60)
+logger.info("PROVIDER AVAILABILITY CHECK")
+logger.info("  LLAMACPP_AVAILABLE: %s", LLAMACPP_AVAILABLE)
+logger.info("  ANTHROPIC_AVAILABLE: %s", ANTHROPIC_AVAILABLE)
+logger.info("=" * 60)
 
 # ============================================================================
 # PYDANTIC MODELS
@@ -222,6 +230,14 @@ def _mk_backend(
         params["llm_base_url"] = os.getenv("LLM_BASE_URL", "http://localhost:8090/v1")
         params["llm_api_key"] = os.getenv("LLM_API_KEY")  # Optional (dummy for llama-server)
         logger.info("Using OpenAI-compatible provider: %s @ %s", model, params["llm_base_url"])
+
+    elif provider == "anthropic":
+        api_key = os.getenv("LLM_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("LLM_API_KEY required for Anthropic provider")
+        params["llm_api_key"] = api_key
+        params["llm_base_url"] = ""  # Not used for Anthropic
+        logger.info("Using Anthropic provider: %s", model)
 
     else:
         raise ValueError(f"Unknown LLM_PROVIDER: {provider}")
@@ -527,19 +543,32 @@ async def run_scenario(body: RunIn) -> Dict[str, Any]:
     provider = os.getenv("LLM_PROVIDER", "ollama")
     
     # Provider validation
-    if provider not in ("ollama", "lmstudio", "openrouter", "llamacpp", "openai"):
+    if provider not in ("ollama", "lmstudio", "openrouter", "llamacpp", "openai", "anthropic"):
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid LLM_PROVIDER: {provider}. Must be 'ollama', 'lmstudio', 'openrouter', 'llamacpp', or 'openai'."
+            detail=f"Invalid LLM_PROVIDER: {provider}. Must be 'ollama', 'lmstudio', 'openrouter', 'llamacpp', 'openai', or 'anthropic'."
         )
         
-    # API key validation (only for OpenRouter)
+    # API key validation (for OpenRouter and Anthropic)
     if provider == "openrouter":
         api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENROUTER_API_KEY", "")
         if not api_key:
             raise HTTPException(
                 status_code=500,
                 detail="LLM_API_KEY missing in environment for OpenRouter provider."
+            )
+    
+    if provider == "anthropic":
+        api_key = os.getenv("LLM_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            raise HTTPException(
+                status_code=500,
+                detail="LLM_API_KEY missing in environment for Anthropic provider."
+            )
+        if not ANTHROPIC_AVAILABLE:
+            raise HTTPException(
+                status_code=500,
+                detail="anthropic package not installed. Install with: pip install anthropic"
             )
     
     # llamacpp availability check

@@ -180,7 +180,11 @@ def _extract_screenshot_b64(raw: Dict[str, Any]) -> Optional[str]:
     if not isinstance(raw, dict): return None
     sc = raw.get("screenshot")
     if isinstance(sc, dict):
-        return sc.get("b64") or sc.get("image_b64") or sc.get("data")
+        # Try to get b64 from screenshot object first
+        result = sc.get("b64") or sc.get("image_b64") or sc.get("data")
+        if result:
+            return result
+        # JVM state: screenshot object may only have "format", actual b64 is at root
     if isinstance(sc, str) and len(sc) > 1000:
         return sc
     return raw.get("screenshot_base64") or raw.get("b64")
@@ -402,7 +406,104 @@ def _enrich_with_icons_yolo(raw: Dict[str, Any], elements: List[Dict[str, Any]],
         print(f"YOLO Error: {e}")
 
 # ============================================================================
-# 5. EXTERNAL SERVICES (Fetch State)
+# 5. JVM STATE HANDLING (Does NOT affect WinDriver/Windows)
+# ============================================================================
+
+def _is_jvm_state(raw: Dict[str, Any]) -> bool:
+    """Check if state is from JVM agent (has stateType='jvm' or nested children)"""
+    if raw.get("stateType") == "jvm":
+        return True
+    # Fallback: check if elements have 'children' or 'class' (JVM indicators)
+    elements = raw.get("elements", [])
+    if elements and isinstance(elements, list) and len(elements) > 0:
+        first_el = elements[0]
+        if isinstance(first_el, dict) and ("children" in first_el or "class" in first_el):
+            return True
+    return False
+
+def _flatten_jvm_elements(elements: List[Dict[str, Any]], result: List[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Recursively flatten nested JVM elements with children"""
+    if result is None:
+        result = []
+    
+    for el in elements:
+        if not isinstance(el, dict):
+            continue
+        
+        # Add current element (will be processed later)
+        result.append(el)
+        
+        # Recursively process children
+        children = el.get("children", [])
+        if children and isinstance(children, list):
+            _flatten_jvm_elements(children, result)
+    
+    return result
+
+def _normalize_jvm_element(el: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Convert JVM element format to standard format with center/name/type"""
+    # Extract name: JVM uses 'text' field
+    name = (el.get("text") or "").strip()
+    if not name:
+        return None
+    
+    # Calculate center from x, y, width, height
+    try:
+        x = float(el.get("x", 0))
+        y = float(el.get("y", 0))
+        w = float(el.get("width", 0))
+        h = float(el.get("height", 0))
+        
+        # Skip elements without valid dimensions
+        if w <= 0 or h <= 0:
+            return None
+        
+        cx = x + w / 2.0
+        cy = y + h / 2.0
+    except (ValueError, TypeError):
+        return None
+    
+    # Determine type from JVM class
+    jvm_class = (el.get("class") or "").lower()
+    el_type = "unknown"
+    if "button" in jvm_class:
+        el_type = "button"
+    elif "text" in jvm_class or "label" in jvm_class:
+        el_type = "text"
+    elif "edit" in jvm_class or "input" in jvm_class or "field" in jvm_class:
+        el_type = "input"
+    elif "combo" in jvm_class or "list" in jvm_class:
+        el_type = "list"
+    elif "menu" in jvm_class:
+        el_type = "menu"
+    elif "panel" in jvm_class or "pane" in jvm_class or "frame" in jvm_class:
+        el_type = "container"
+    
+    return {
+        "name": name,
+        "center": {"x": cx, "y": cy},
+        "type": el_type
+    }
+
+def _process_jvm_state(raw: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Process JVM state: flatten and normalize elements"""
+    elements = raw.get("elements", [])
+    screen = raw.get("screen") or {}
+    
+    # Flatten nested children
+    flat_elements = _flatten_jvm_elements(elements)
+    
+    # Normalize each element
+    normalized = []
+    for el in flat_elements:
+        norm_el = _normalize_jvm_element(el)
+        if norm_el:
+            normalized.append(norm_el)
+    
+    return normalized, screen
+
+# ============================================================================
+# 6. EXTERNAL SERVICES (Fetch State)
 # ============================================================================
 
 async def _fetch_raw_state() -> Dict[str, Any]:
@@ -588,13 +689,30 @@ async def state_raw():
 
 @app.post("/state/for-llm")
 async def state_for_llm():
-    """Standard SUT path (WinDriver) with Enrichment & Dedupe"""
+    """Standard SUT path (WinDriver/JVM) with Enrichment & Dedupe"""
     raw = await _fetch_raw_state()
+    dbg = {}
+    
+    # === JVM STATE HANDLING (separate path, does not affect WinDriver) ===
+    if _is_jvm_state(raw):
+        dbg["state_type"] = "jvm"
+        elems, screen = _process_jvm_state(raw)
+        
+        # Dedupe for JVM
+        if not INCLUDE_DUPLICATES_FOR_LLM:
+            elems, d = _dedupe_by_name_smart(elems)
+            dbg.update(d)
+        
+        res = _finalize_elements_for_llm(elems, screen)
+        res["_debug"] = dbg
+        return res
+    
+    # === WINDRIVER/WINDOWS PATH (unchanged) ===
+    dbg["state_type"] = "windriver"
     proc = raw
     elems = proc.get("elements") or []
     screen = proc.get("screen") or {}
     
-    dbg = {}
     # Enrichment
     _enrich_with_ocr_if_possible(proc, elems, dbg)
     _enrich_with_icons_yolo(proc, elems, dbg)

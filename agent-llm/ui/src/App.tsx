@@ -20,7 +20,8 @@ import {
     FolderOpen,
     Bot,
     Pencil,
-    Square
+    Square,
+    SkipForward
 } from 'lucide-react';
 import api, { SavedTest, TestStep, ScenarioResult, StepOutcome } from './api';
 
@@ -34,6 +35,10 @@ interface ActionStep {
     text?: string;
     ms?: number;
     combo?: string[];
+    delta?: number;
+    at?: { x: number; y: number };
+    from?: { x: number; y: number };
+    to?: { x: number; y: number };
 }
 
 interface StepDefinition {
@@ -147,6 +152,12 @@ function App() {
         setSteps(newSteps);
     };
 
+    const toggleSkip = (index: number) => {
+        const newSteps = [...steps];
+        newSteps[index] = { ...newSteps[index], skipped: !newSteps[index].skipped };
+        setSteps(newSteps);
+    };
+
     // Run scenario
     const runScenario = async () => {
         if (!scenarioName.trim() || steps.some(s => !s.test_step.trim() || !s.expected_result.trim())) {
@@ -184,7 +195,7 @@ function App() {
         try {
             const result = await api.runScenario({
                 scenario_name: scenarioName,
-                steps: steps.filter(s => s.test_step.trim()),
+                steps: steps.filter(s => s.test_step.trim() && !s.skipped),
                 temperature: 0.1
             });
             setResults(result);
@@ -621,10 +632,17 @@ function App() {
                                     <label className="form-label">Test Steps</label>
                                     <div className="step-list">
                                         {steps.map((step, index) => (
-                                            <div key={index} className="step-card">
+                                            <div key={index} className={`step-card ${step.skipped ? 'skipped' : ''}`}>
                                                 <div className="step-card-header">
-                                                    <span className="step-number">{index + 1}</span>
+                                                    <span className="step-number">{step.skipped ? '—' : index + 1}</span>
                                                     <div className="step-card-actions">
+                                                        <button
+                                                            className={`btn btn-ghost btn-sm btn-skip ${step.skipped ? 'active' : ''}`}
+                                                            onClick={() => toggleSkip(index)}
+                                                            title={step.skipped ? 'Enable Step' : 'Skip Step'}
+                                                        >
+                                                            <SkipForward size={14} />
+                                                        </button>
                                                         {index > 0 && (
                                                             <button className="btn btn-ghost btn-sm" onClick={() => moveStep(index, 'up')}>↑</button>
                                                         )}
@@ -867,6 +885,8 @@ function App() {
                                                                                         {step.type === 'type' && `Type "${step.text}"`}
                                                                                         {step.type === 'wait' && `Wait ${step.ms}ms`}
                                                                                         {step.type === 'key_combo' && `Key: ${step.combo?.join('+')}`}
+                                                                                        {step.type === 'scroll' && `Scroll ${step.delta && step.delta > 0 ? 'up' : 'down'} (${step.delta})${step.at ? ` at (${step.at.x}, ${step.at.y})` : ''}`}
+                                                                                        {step.type === 'drag' && `Drag from (${step.from?.x}, ${step.from?.y}) to (${step.to?.x}, ${step.to?.y})`}
                                                                                     </div>
                                                                                 ))}
                                                                             </div>
@@ -1078,11 +1098,17 @@ function App() {
                                                         {action.type === 'click' && <MousePointer size={12} />}
                                                         {action.type === 'type' && <Keyboard size={12} />}
                                                         {action.type === 'wait' && <Timer size={12} />}
+                                                        {action.type === 'scroll' && <span style={{ fontSize: '10px' }}>🖱️</span>}
+                                                        {action.type === 'key_combo' && <Keyboard size={12} />}
+                                                        {action.type === 'drag' && <MousePointer size={12} />}
                                                         <span>
                                                             {action.type === 'click' && `Click at (${action.target?.point?.x}, ${action.target?.point?.y})`}
                                                             {action.type === 'type' && `Type "${action.text}"`}
                                                             {action.type === 'wait' && `Wait ${action.ms}ms`}
-                                                            {!['click', 'type', 'wait'].includes(action.type) && action.type}
+                                                            {action.type === 'scroll' && `Scroll ${action.delta && action.delta > 0 ? 'up' : 'down'} (${action.delta})${action.at ? ` at (${action.at.x}, ${action.at.y})` : ''}`}
+                                                            {action.type === 'key_combo' && `Key combo: ${action.combo?.join('+')}`}
+                                                            {action.type === 'drag' && `Drag from (${action.from?.x}, ${action.from?.y}) to (${action.to?.x}, ${action.to?.y})`}
+                                                            {!['click', 'type', 'wait', 'scroll', 'key_combo', 'drag'].includes(action.type) && action.type}
                                                         </span>
                                                     </div>
                                                 ))}

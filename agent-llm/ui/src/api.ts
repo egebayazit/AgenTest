@@ -6,6 +6,7 @@ export interface TestStep {
     test_step: string;
     expected_result: string;
     note_to_llm?: string;
+    skipped?: boolean;
 }
 
 export interface SavedTest {

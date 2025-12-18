@@ -31,6 +31,16 @@ try:
 except ImportError:
     LLAMACPP_AVAILABLE = False
 
+try:
+    from anthropic import AsyncAnthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError as e:
+    print(f"[DEBUG] Anthropic import failed: {e}")
+    ANTHROPIC_AVAILABLE = False
+except Exception as e:
+    print(f"[DEBUG] Anthropic import error (other): {type(e).__name__}: {e}")
+    ANTHROPIC_AVAILABLE = False
+
 # ============================================================================
 # SYSTEM PROMPT
 # ============================================================================
@@ -937,6 +947,8 @@ class LLMBackend:
             plan = await self._request_plan_llamacpp(messages, temperature)
         elif self.llm_provider == "openai":
             plan = await self._request_plan_openai(messages, temperature)
+        elif self.llm_provider == "anthropic":
+            plan = await self._request_plan_anthropic(messages, temperature)
         else:
             plan = await self._request_plan_openrouter(messages, temperature)
         
@@ -947,7 +959,7 @@ class LLMBackend:
             #resp = await client.post(f"{self.llm_base_url}/api/chat", json={"model": self.model, "messages": messages, "stream": False, "format": AGEN_TEST_PLAN_SCHEMA, "options": {"temperature": temperature}})
             resp = await client.post(f"{self.llm_base_url}/api/chat", json={"model": self.model, "messages": messages, "stream": False, "format": "json", "options": {"temperature": temperature}})
             return self._parse_plan(resp.json()["message"]["content"])
-    
+
     async def _request_plan_llamacpp(self, messages: List, temperature: float) -> Dict:
         if not self._llama_model: raise LLMCommunicationError("Model not loaded")
         
@@ -970,6 +982,29 @@ class LLMBackend:
         async with httpx.AsyncClient(timeout=self.llm_timeout) as client:
             resp = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json={"model": self.model, "messages": messages, "temperature": temperature})
             return self._parse_plan(resp.json()["choices"][0]["message"]["content"])
+    
+    async def _request_plan_anthropic(self, messages: List, temperature: float) -> Dict:
+        """Anthropic Claude API support."""
+        if not ANTHROPIC_AVAILABLE:
+            raise LLMCommunicationError("anthropic package not installed")
+        
+        # Extract system prompt and user message
+        sys_msg = next((m["content"] for m in messages if m.get("role") == "system"), "")
+        user_messages = [{"role": m["role"], "content": m["content"]} for m in messages if m.get("role") != "system"]
+        
+        client = AsyncAnthropic(api_key=self.api_key)
+        
+        response = await client.messages.create(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            system=sys_msg,
+            messages=user_messages,
+            temperature=temperature
+        )
+        
+        # Extract text content from response
+        content = response.content[0].text if response.content else ""
+        return self._parse_plan(content)
     
     def _build_messages(self, test_step: str, expected_result: str, note_to_llm: Optional[str], state: Dict, recent_actions: List, attempt_number: int) -> tuple[List[Dict], str]:
         
@@ -1000,7 +1035,7 @@ class LLMBackend:
             e_id = idx  # 1'den başlayan sanal ID
             """name = str(el.get("name") or "Unknown").replace("|", "")[:40]
             e_type = str(el.get("type") or "unk")[:10] """  #or geldi , str gitti
-            name = el.get("name", "Unknown").replace("|", "")[:40] # Boru karakterini temizle, çok uzunsa kes
+            name = el.get("name", "Unknown").replace("|", "")  # Boru karakterini temizle, isim kesmesi kaldırıldı
             e_type = el.get("type", "unk")[:10]
             center = el.get("center", {})
             x, y = center.get("x", 0), center.get("y", 0)

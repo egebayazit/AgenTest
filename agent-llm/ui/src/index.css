@@ -583,6 +583,31 @@ textarea.form-input {
   box-shadow: var(--shadow-sm);
 }
 
+/* Skipped Step Styling */
+.step-card.skipped {
+  opacity: 0.5;
+  background: var(--gray-100);
+  border-style: dashed;
+}
+
+.step-card.skipped .step-number {
+  background: var(--gray-400);
+}
+
+.step-card.skipped .form-input {
+  background: var(--gray-50);
+  color: var(--gray-500);
+}
+
+.btn-skip {
+  color: var(--gray-500);
+}
+
+.btn-skip.active {
+  background: var(--warning-light);
+  color: var(--warning);
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .main-content {
