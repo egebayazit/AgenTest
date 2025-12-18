@@ -8,6 +8,8 @@
 #include <thread>
 #include <iomanip>
 #include <cstdlib>
+#include <climits>
+#include <vector>
 
 // Windows headers (after httplib to avoid winsock conflicts)
 #define WIN32_LEAN_AND_MEAN
@@ -18,6 +20,7 @@
 // UI Automation for WinDriver support
 #include <UIAutomation.h>
 #include <comdef.h>
+#include <OleAuto.h>
 #pragma comment(lib, "Uiautomationcore.lib")
 
 // Local utilities
@@ -62,7 +65,110 @@ std::string WideToUtf8(const std::wstring& wstr) {
 }
 
 // ============================================================================
-// GET WIN ELEMENT AT POINT (UI Automation)
+// SUT-STYLE HELPERS (from agent-sut/win/uia_utils.cpp)
+// ============================================================================
+static std::wstring FromBSTR(BSTR b) { return b ? std::wstring(b, SysStringLen(b)) : L""; }
+static inline bool HasPositiveArea(const RECT& r) { return (r.right > r.left) && (r.bottom > r.top); }
+
+static inline RECT VirtualScreenRect() {
+    RECT r{};
+    r.left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    r.top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    r.right = r.left + GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    r.bottom = r.top + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    return r;
+}
+
+static inline bool IntersectNonEmpty(const RECT& a, const RECT& b) {
+    RECT out{};
+    if (IntersectRect(&out, &a, &b)) return HasPositiveArea(out);
+    return false;
+}
+
+static inline bool PointInRect(const RECT& r, int x, int y) {
+    return x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+}
+
+static inline long long RectArea(const RECT& r) {
+    long long w = r.right - r.left;
+    long long h = r.bottom - r.top;
+    return (w > 0 && h > 0) ? w * h : LLONG_MAX;
+}
+
+// ============================================================================
+// SUT-STYLE CACHE REQUEST (from agent-sut)
+// ============================================================================
+static IUIAutomationCacheRequest* CreateSmartCacheRequest(IUIAutomation* uia) {
+    IUIAutomationCacheRequest* req = nullptr;
+    if (FAILED(uia->CreateCacheRequest(&req))) return nullptr;
+
+    req->AddProperty(UIA_NamePropertyId);
+    req->AddProperty(UIA_ClassNamePropertyId);
+    req->AddProperty(UIA_ControlTypePropertyId);
+    req->AddProperty(UIA_BoundingRectanglePropertyId);
+    req->AddProperty(UIA_AutomationIdPropertyId);
+    req->AddProperty(UIA_IsEnabledPropertyId);
+    req->AddProperty(UIA_IsOffscreenPropertyId);
+    req->AddProperty(UIA_NativeWindowHandlePropertyId);
+    req->AddProperty(UIA_ProcessIdPropertyId);
+
+    // Light pattern checks
+    req->AddPattern(UIA_InvokePatternId);
+    req->AddPattern(UIA_ValuePatternId);
+    req->AddPattern(UIA_SelectionItemPatternId);
+    req->AddPattern(UIA_TogglePatternId);
+    req->AddPattern(UIA_ExpandCollapsePatternId);
+    req->AddPattern(UIA_ScrollPatternId);
+    req->AddPattern(UIA_TextPatternId);
+    req->AddPattern(UIA_LegacyIAccessiblePatternId);
+
+    req->put_TreeScope(TreeScope_Element);
+    return req;
+}
+
+static void GetSmartProp(IUIAutomationElement* e, PROPERTYID pid, VARIANT* v) {
+    VariantInit(v);
+    e->GetCachedPropertyValue(pid, v); 
+}
+
+// ============================================================================
+// Extract element properties from CACHED element (SUT style)
+// ============================================================================
+static void ExtractCachedElementProps(IUIAutomationElement* elem, WinElement& result) {
+    VARIANT v;
+    
+    // Get Name from cache
+    GetSmartProp(elem, UIA_NamePropertyId, &v);
+    if (v.vt == VT_BSTR && v.bstrVal) result.name = FromBSTR(v.bstrVal);
+    VariantClear(&v);
+    
+    // Get AutomationId from cache
+    GetSmartProp(elem, UIA_AutomationIdPropertyId, &v);
+    if (v.vt == VT_BSTR && v.bstrVal) result.automationId = FromBSTR(v.bstrVal);
+    VariantClear(&v);
+    
+    // Get Value - need to use pattern, can't cache this easily
+    IUnknown* pUnk = nullptr;
+    HRESULT hr = elem->GetCachedPattern(UIA_ValuePatternId, &pUnk);
+    if (SUCCEEDED(hr) && pUnk) {
+        IValueProvider* pValue = nullptr;
+        hr = pUnk->QueryInterface(IID_PPV_ARGS(&pValue));
+        if (SUCCEEDED(hr) && pValue) {
+            BSTR bstrValue = nullptr;
+            hr = pValue->get_Value(&bstrValue);
+            if (SUCCEEDED(hr) && bstrValue) {
+                result.value = FromBSTR(bstrValue);
+                SysFreeString(bstrValue);
+            }
+            pValue->Release();
+        }
+        pUnk->Release();
+    }
+}
+
+// ============================================================================
+// GET WIN ELEMENT AT POINT - SUT-STYLE (from agent-sut)
+// Uses CacheRequest + TreeWalker BFS exactly like snapshot_filtered
 // ============================================================================
 WinElement GetWinElementAtPoint(int x, int y) {
     WinElement result;
@@ -71,46 +177,218 @@ WinElement GetWinElementAtPoint(int x, int y) {
         return result;
     }
     
-    POINT pt = { x, y };
-    IUIAutomationElement* pElement = nullptr;
+    const RECT vs = VirtualScreenRect();
     
-    HRESULT hr = g_pAutomation->ElementFromPoint(pt, &pElement);
-    if (FAILED(hr) || !pElement) {
+    // Create cache request like SUT
+    IUIAutomationCacheRequest* cacheReq = CreateSmartCacheRequest(g_pAutomation);
+    if (!cacheReq) {
         return result;
     }
     
-    result.found = true;
-    
-    // Get Name
-    BSTR bstrName = nullptr;
-    hr = pElement->get_CurrentName(&bstrName);
-    if (SUCCEEDED(hr) && bstrName) {
-        result.name = std::wstring(bstrName, SysStringLen(bstrName));
-        SysFreeString(bstrName);
+    // Get TreeWalker
+    IUIAutomationTreeWalker* walker = nullptr;
+    g_pAutomation->get_RawViewWalker(&walker);
+    if (!walker) { 
+        cacheReq->Release(); 
+        return result; 
     }
     
-    // Get AutomationId
-    BSTR bstrId = nullptr;
-    hr = pElement->get_CurrentAutomationId(&bstrId);
-    if (SUCCEEDED(hr) && bstrId) {
-        result.automationId = std::wstring(bstrId, SysStringLen(bstrId));
-        SysFreeString(bstrId);
+    // Get window at mouse point (NOT foreground - inspector console becomes foreground on F4)
+    // WindowFromPoint gives us the actual window under the cursor
+    POINT mousePoint = { x, y };
+    HWND hwndAtPoint = WindowFromPoint(mousePoint);
+    HWND fgRoot = hwndAtPoint ? GetAncestor(hwndAtPoint, GA_ROOT) : nullptr;
+    if (!fgRoot) fgRoot = hwndAtPoint;
+    
+
+    
+    // Start from foreground window
+    IUIAutomationElement* rootElem = nullptr;
+    if (fgRoot) {
+        g_pAutomation->ElementFromHandleBuildCache(fgRoot, cacheReq, &rootElem);
+    }
+    if (!rootElem) {
+        g_pAutomation->GetRootElementBuildCache(cacheReq, &rootElem);
     }
     
-    // Get Value (from IValueProvider pattern)
-    IValueProvider* pValueProvider = nullptr;
-    hr = pElement->GetCurrentPattern(UIA_ValuePatternId, (IUnknown**)&pValueProvider);
-    if (SUCCEEDED(hr) && pValueProvider) {
-        BSTR bstrValue = nullptr;
-        hr = pValueProvider->get_Value(&bstrValue);
-        if (SUCCEEDED(hr) && bstrValue) {
-            result.value = std::wstring(bstrValue, SysStringLen(bstrValue));
-            SysFreeString(bstrValue);
+    if (!rootElem) {
+        walker->Release();
+        cacheReq->Release();
+        return result;
+    }
+    
+    // BFS traversal exactly like SUT's snapshot_filtered
+    struct QueueItem {
+        IUIAutomationElement* elem;
+        int depth;
+    };
+    std::vector<QueueItem> queue;
+    queue.push_back({ rootElem, 0 });
+    
+    IUIAutomationElement* bestElement = nullptr;
+    long long bestArea = LLONG_MAX;
+    
+    const int MAX_DEPTH = 18;  // Same as SUT
+    const int MAX_ELEMENTS = 500;
+    int processed = 0;
+    int foundCount = 0;
+    
+    size_t head = 0;
+    while (head < queue.size() && processed < MAX_ELEMENTS) {
+        QueueItem item = queue[head++];
+        IUIAutomationElement* elem = item.elem;
+        processed++;
+        
+        VARIANT v;
+        
+        // Get control type for container detection
+        GetSmartProp(elem, UIA_ControlTypePropertyId, &v);
+        long cType = v.lVal;
+        VariantClear(&v);
+        
+        // Get IsOffscreen
+        GetSmartProp(elem, UIA_IsOffscreenPropertyId, &v);
+        bool isOffscreen = (v.vt == VT_BOOL && v.boolVal == VARIANT_TRUE);
+        VariantClear(&v);
+        
+        // Get BoundingRectangle
+        RECT rect = {0,0,0,0};
+        GetSmartProp(elem, UIA_BoundingRectanglePropertyId, &v);
+        if ((v.vt & VT_ARRAY) && v.parray) {
+            SAFEARRAY* sa = v.parray;
+            double* p = nullptr; 
+            SafeArrayAccessData(sa, (void**)&p);
+            rect.left = (LONG)p[0]; 
+            rect.top = (LONG)p[1];
+            rect.right = (LONG)(p[0] + p[2]); 
+            rect.bottom = (LONG)(p[1] + p[3]);
+            SafeArrayUnaccessData(sa);
         }
-        pValueProvider->Release();
+        VariantClear(&v);
+        
+        bool posArea = HasPositiveArea(rect);
+        bool onScreen = posArea && IntersectNonEmpty(rect, vs);
+        bool containsPoint = posArea && PointInRect(rect, x, y);
+        
+        // --- IMPROVED PRUNING (same as SUT) ---
+        bool skipSelf = false;
+        bool isDialogOrWindow = (cType == UIA_WindowControlTypeId);
+        
+        // If offscreen, skip ONLY if not a Window which might contain visible popups
+        if (item.depth > 0 && (!onScreen || isOffscreen) && !isDialogOrWindow) {
+            skipSelf = true;
+        }
+        
+        // Check if this element contains our target point (only if not skipped)
+        if (!skipSelf && containsPoint) {
+            foundCount++;
+            long long area = RectArea(rect);
+            
+            // Get name to check if meaningful
+            GetSmartProp(elem, UIA_NamePropertyId, &v);
+            bool hasName = (v.vt == VT_BSTR && v.bstrVal && SysStringLen(v.bstrVal) > 0);
+            VariantClear(&v);
+            
+            // Prefer smaller elements with names (more specific)
+            if (hasName && area < bestArea) {
+                if (bestElement) bestElement->Release();
+                bestElement = elem;
+                bestElement->AddRef();
+                bestArea = area;
+            } else if (!bestElement && area < bestArea) {
+                bestElement = elem;
+                bestElement->AddRef();
+                bestArea = area;
+            }
+        }
+        
+        // Container detection for depth traversal (same as SUT)
+        bool isContainer = (cType == UIA_WindowControlTypeId || cType == UIA_PaneControlTypeId || 
+                            cType == UIA_GroupControlTypeId || cType == UIA_ListControlTypeId || 
+                            cType == UIA_TableControlTypeId || cType == UIA_TreeControlTypeId ||
+                            cType == UIA_DataGridControlTypeId || cType == UIA_CustomControlTypeId);
+        
+        // --- DEEP TRAVERSAL (same as SUT line 320) ---
+        // Traverse if: not skipped AND depth < 18 AND (is container OR depth < 4)
+        if (!skipSelf && item.depth < MAX_DEPTH && (isContainer || item.depth < 4)) {
+            IUIAutomationElement* child = nullptr;
+            if (SUCCEEDED(walker->GetFirstChildElementBuildCache(elem, cacheReq, &child)) && child) {
+                int consecutiveOffscreen = 0;
+                IUIAutomationElement* current = child;
+                
+                while (current) {
+                    // Check child offscreen status
+                    VARIANT vOff; 
+                    VariantInit(&vOff);
+                    current->GetCachedPropertyValue(UIA_IsOffscreenPropertyId, &vOff);
+                    bool childOff = (vOff.vt == VT_BOOL && vOff.boolVal == VARIANT_TRUE);
+                    VariantClear(&vOff);
+                    
+                    // Check child rect
+                    VARIANT vR; 
+                    VariantInit(&vR);
+                    current->GetCachedPropertyValue(UIA_BoundingRectanglePropertyId, &vR);
+                    RECT childRect = {0,0,0,0};
+                    if ((vR.vt & VT_ARRAY) && vR.parray) {
+                        SAFEARRAY* sa = vR.parray;
+                        double* p = nullptr; 
+                        SafeArrayAccessData(sa, (void**)&p);
+                        childRect.left = (LONG)p[0]; 
+                        childRect.top = (LONG)p[1];
+                        childRect.right = (LONG)(p[0] + p[2]); 
+                        childRect.bottom = (LONG)(p[1] + p[3]);
+                        SafeArrayUnaccessData(sa);
+                    }
+                    VariantClear(&vR);
+                    
+                    bool childVisible = HasPositiveArea(childRect) && IntersectNonEmpty(childRect, vs);
+                    bool childContainsPoint = HasPositiveArea(childRect) && PointInRect(childRect, x, y);
+                    
+                    if (childOff || !childVisible) {
+                        consecutiveOffscreen++;
+                    } else {
+                        consecutiveOffscreen = 0;
+                    }
+                    
+                    // Stop after 25 consecutive offscreen (same as SUT)
+                    if (consecutiveOffscreen > 25) {
+                        current->Release();
+                        break;
+                    }
+                    
+                    // Add ALL children to queue (same as SUT line 359)
+                    queue.push_back({ current, item.depth + 1 });
+                    
+                    IUIAutomationElement* next = nullptr;
+                    if (FAILED(walker->GetNextSiblingElementBuildCache(current, cacheReq, &next))) {
+                        break;
+                    }
+                    current = next;
+                }
+            }
+        }
+        
+        elem->Release();
     }
     
-    pElement->Release();
+
+    
+    // Clean up remaining queue
+    for (size_t i = head; i < queue.size(); ++i) {
+        if (queue[i].elem) queue[i].elem->Release();
+    }
+    
+    walker->Release();
+    cacheReq->Release();
+    
+    // Extract properties from best element
+    if (bestElement) {
+        result.found = true;
+        ExtractCachedElementProps(bestElement, result);
+        bestElement->Release();
+
+    }
+    
     return result;
 }
 

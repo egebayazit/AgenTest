@@ -308,7 +308,7 @@ class SemanticStateFilter:
             etype = str(el.get('type', 'unk')).replace('container', 'cont').replace('unknown', 'unk')
             name = str(el.get('name', '')).replace('\n', ' ').strip()
             
-            if len(name) > 40: name = name[:37] + "..."
+            # İsim kesme kaldırıldı - ODS'deki tam isim LLM'e gidecek
             if not name: name = "[NO_NAME]"
             
             line = f"{sim_id} | {name} | {etype} | ({x},{y})"

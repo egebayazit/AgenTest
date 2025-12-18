@@ -36,6 +36,21 @@ $env:ODS_HOST = "localhost"
 # ODS Server: http://localhost:8000
 ```
 
+### Farklı Ağdan Bağlanma (Örn: Mobil Hotspot)
+ODS sunucusu farklı bir IP'de çalışıyorsa:
+```powershell
+$env:ODS_HOST = "10.228.19.178"
+.\inspector.exe
+# ODS Server: http://10.228.19.178:8000
+```
+
+Veya tek satırda:
+```powershell
+$env:ODS_HOST="10.228.19.178"; .\inspector.exe
+```
+
+> **Not:** Ağ değişikliğinde "ODS server not reachable" hatası alırsan, ODS sunucusunun yeni IP'sini (`ipconfig` ile) bul ve `ODS_HOST` değişkenini güncelle.
+
 ## Gereksinimler
 - OmniParser server çalışır durumda (port 8000)
 - Windows 10/11
