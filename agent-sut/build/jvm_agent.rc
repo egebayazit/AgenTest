@@ -1,0 +1,2 @@
+JVM_AGENT RCDATA "C:\\Users\\hazal\\Desktop\\AgenTest\\agent-sut\\jvm\\target\\jvm-element-finder-1.0-SNAPSHOT-jar-with-dependencies.jar"
+JVM_RUNTIME RCDATA "C:\\Users\\hazal\\Desktop\\AgenTest\\agent-sut\\jvm\\runtime.zip"

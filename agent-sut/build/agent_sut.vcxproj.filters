@@ -1,0 +1,45 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\server_main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\action\action_handler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\action\action_robot.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\win\uia_utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\win\capture.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\win\base64.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\jvm\jvm_bridge.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\web\web_bridge.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\win\agent_resources.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
+    <ResourceCompile Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\build\jvm_agent.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{DACA7B71-AAA6-386B-A81A-BFAC352A71F8}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

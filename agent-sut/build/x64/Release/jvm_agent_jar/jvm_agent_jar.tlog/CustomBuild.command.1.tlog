@@ -1,0 +1,28 @@
+^C:\USERS\HAZAL\DESKTOP\AGENTEST\AGENT-SUT\BUILD\CMAKEFILES\081FF02B53C5228AED366E5B9A12E214\JVM-ELEMENT-FINDER-1.0-SNAPSHOT-JAR-WITH-DEPENDENCIES.JAR.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E chdir C:/Users/hazal/Desktop/AgenTest/agent-sut/jvm "C:/Program Files/apache-maven-3.9.11/bin/mvn.cmd" -q -DskipTests package
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\HAZAL\DESKTOP\AGENTEST\AGENT-SUT\BUILD\CMAKEFILES\26742F591D6C23D371CC238B2142BBC9\JVM_AGENT_JAR.RULE
+setlocal
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\HAZAL\DESKTOP\AGENTEST\AGENT-SUT\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/hazal/Desktop/AgenTest/agent-sut -BC:/Users/hazal/Desktop/AgenTest/agent-sut/build --check-stamp-file C:/Users/hazal/Desktop/AgenTest/agent-sut/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -1,0 +1,8 @@
+C:\Users\hazal\Desktop\AgenTest\agent-sut\server_main.cpp;C:\Users\hazal\Desktop\AgenTest\agent-sut\build\agent_sut.dir\Release\server_main.obj
+C:\Users\hazal\Desktop\AgenTest\agent-sut\action\action_handler.cpp;C:\Users\hazal\Desktop\AgenTest\agent-sut\build\agent_sut.dir\Release\action_handler.obj
+C:\Users\hazal\Desktop\AgenTest\agent-sut\action\action_robot.cpp;C:\Users\hazal\Desktop\AgenTest\agent-sut\build\agent_sut.dir\Release\action_robot.obj
+C:\Users\hazal\Desktop\AgenTest\agent-sut\win\uia_utils.cpp;C:\Users\hazal\Desktop\AgenTest\agent-sut\build\agent_sut.dir\Release\uia_utils.obj
+C:\Users\hazal\Desktop\AgenTest\agent-sut\win\capture.cpp;C:\Users\hazal\Desktop\AgenTest\agent-sut\build\agent_sut.dir\Release\capture.obj
+C:\Users\hazal\Desktop\AgenTest\agent-sut\win\base64.cpp;C:\Users\hazal\Desktop\AgenTest\agent-sut\build\agent_sut.dir\Release\base64.obj
+C:\Users\hazal\Desktop\AgenTest\agent-sut\jvm\jvm_bridge.cpp;C:\Users\hazal\Desktop\AgenTest\agent-sut\build\agent_sut.dir\Release\jvm_bridge.obj
+C:\Users\hazal\Desktop\AgenTest\agent-sut\web\web_bridge.cpp;C:\Users\hazal\Desktop\AgenTest\agent-sut\build\agent_sut.dir\Release\web_bridge.obj

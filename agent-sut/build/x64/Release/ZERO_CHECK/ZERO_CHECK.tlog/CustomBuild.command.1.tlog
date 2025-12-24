@@ -1,0 +1,10 @@
+^C:\USERS\HAZAL\DESKTOP\AGENTEST\AGENT-SUT\BUILD\CMAKEFILES\26742F591D6C23D371CC238B2142BBC9\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/hazal/Desktop/AgenTest/agent-sut -BC:/Users/hazal/Desktop/AgenTest/agent-sut/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/hazal/Desktop/AgenTest/agent-sut/build/agent_sut.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

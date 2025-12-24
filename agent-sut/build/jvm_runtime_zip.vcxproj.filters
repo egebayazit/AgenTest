@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\build\CMakeFiles\d351c5682fc8d7d4fd339440658cb2b6\runtime.zip.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\build\CMakeFiles\26742f591d6c23d371cc238b2142bbc9\jvm_runtime_zip.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\hazal\Desktop\AgenTest\agent-sut\build\CMakeFiles\jvm_runtime_zip" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{48465A27-897D-34BB-913B-C996122FE95F}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

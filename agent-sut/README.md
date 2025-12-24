@@ -15,3 +15,15 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 Bu adimlar Maven jarini (`jvm_agent_jar` hedefi) ve trimmed JVM runtime'ini (`jvm_runtime_zip`) otomatik olarak olusturur. Sonuc exe `build\Release\agent_sut.exe` konumuna yazilir.
+
+### Java kaynak dosyalari degistikten sonra JAR'i yeniden derlemek
+Eger `jvm/src` altindaki Java dosyalarini degistirdiyseniz, CMake incremental build JAR'i guncellemeyebilir. Bu durumda:
+```powershell
+cmake --build build --config Release --target jvm_agent_jar --clean-first
+cmake --build build --config Release
+```
+
+# web çalıstırma
+```powershell
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\chrome_debug_profile"
+```

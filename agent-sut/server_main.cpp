@@ -2,6 +2,7 @@
 #include "third_party/httplib.h"
 #include "third_party/json.hpp"
 #include "jvm/jvm_bridge.h"
+#include "web/web_bridge.h" // <--- Web Bridge Header
 
 #include <Windows.h>
 #include <ShellScalingAPI.h>   // DPI awareness
@@ -21,11 +22,8 @@
 // ---- WİN tarafı ----
 #include "win/uia_utils.h"
 #include "win/capture.h"
-//#include "base64.h"
 
 using json = nlohmann::json;
-
-
 
 // ========================= DPI awareness =========================
 static void EnableDpiAwareness() {
@@ -35,6 +33,34 @@ static void EnableDpiAwareness() {
     }
 }
 
+// ========================= Web Helper Fonksiyonları =========================
+static bool IsBrowserWindow(HWND hwnd) {
+    wchar_t className[256];
+    if (GetClassNameW(hwnd, className, 256) > 0) {
+        std::wstring name(className);
+        // DEBUG LOG
+        std::wcout << L"[DEBUG] Pencere Sinif Adi: " << name << std::endl;
+        
+        // Esnek arama (Contains mantığı)
+        if (name.find(L"Chrome_WidgetWin") != std::wstring::npos) return true;
+        if (name.find(L"Mozilla") != std::wstring::npos) return true;
+        if (name.find(L"Edge") != std::wstring::npos) return true;
+    }
+    return false;
+}
+
+static POINT GetBrowserViewportOffset(HWND hwnd) {
+    POINT pt = {0, 0};
+    RECT clientRect;
+    if (GetClientRect(hwnd, &clientRect)) {
+        pt.x = clientRect.left;
+        pt.y = clientRect.top;
+        ClientToScreen(hwnd, &pt);
+    }
+    return pt;
+}
+// ====================================================================================
+
 // ========================= küçük yardımcılar ======================
 static std::string ws2utf8(const std::wstring& ws){
     if(ws.empty()) return {};
@@ -43,31 +69,6 @@ static std::string ws2utf8(const std::wstring& ws){
     std::string out((size_t)len, '\0');
     WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(), &out[0], len, nullptr, nullptr);
     return out;
-}
-
-static std::wstring ExeDir(){
-    wchar_t buf[MAX_PATH]{}; GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    std::wstring p(buf); size_t pos = p.find_last_of(L"\\/");
-    return (pos==std::wstring::npos)? L"." : p.substr(0,pos);
-}
-static void EnsureDir(const std::wstring& path){
-    CreateDirectoryW(path.c_str(), nullptr); // varsa NO-OP
-}
-static bool WriteAllBytes(const std::wstring& path, const void* data, DWORD size){
-    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if(h==INVALID_HANDLE_VALUE) return false;
-    DWORD written=0; BOOL ok = WriteFile(h, data, size, &written, nullptr);
-    CloseHandle(h); return ok && (written==size);
-}
-static bool WriteAllTextUtf8(const std::wstring& path, const std::string& utf8){
-    return WriteAllBytes(path, utf8.data(), (DWORD)utf8.size());
-}
-static std::wstring TimeStamp(){
-    SYSTEMTIME st; GetLocalTime(&st);
-    wchar_t buf[64];
-    swprintf(buf, 64, L"%04u%02u%02u_%02u%02u%02u_%03u",
-             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
-    return buf;
 }
 
 // ========================= winstate JSON yardımcıları =================
@@ -185,83 +186,111 @@ int main(){
         std::vector<unsigned char> png_raw;
         auto j = make_state(uia, &png_raw, /*want_screenshot=*/true);
         j["stateType"] = "windows";
-
-        const std::wstring base = ExeDir();
-        const std::wstring ts   = TimeStamp();
-        const std::wstring statesDir = base + L"\\winstate_logs";
-        const std::wstring shotsDir  = base + L"\\winstate_screenshots";
-        EnsureDir(statesDir);
-        EnsureDir(shotsDir);
-
-        const std::wstring jsonPath = statesDir + L"\\winstate_" + ts + L".json";
-        const std::wstring pngPath  = shotsDir  + L"\\winstate_" + ts + L".png";
-
-        const std::string jsonStr = j.dump();
-        WriteAllTextUtf8(jsonPath, jsonStr);
-        if(!png_raw.empty()){
-            WriteAllBytes(pngPath, png_raw.data(), (DWORD)png_raw.size());
-        }
-
-        res.set_content(jsonStr, "application/json");
+        res.set_content(j.dump(), "application/json");
     });
 
 
-    // ---- Combined STATE endpoint (tries JVM state first, falls back to Windows state)
+    // ---- Combined STATE endpoint (tries WEB -> JVM -> Windows)
     svr.Post("/state", [&](const httplib::Request& req, httplib::Response& res){
+        
+        // ======================= Web Modülü Entegrasyonu Başlangıcı =======================
+        HWND fg = GetForegroundWindow();
+        bool isBrowser = IsBrowserWindow(fg);
+        std::string webError;
+
+        // 1. WEB MODÜLÜ (Eğer tarayıcı ise)
+        if (isBrowser) {
+            std::cout << "[INFO] Browser tespit edildi. Web ajani calistiriliyor..." << std::endl;
+            auto webRes = web_bridge::CaptureWebSnapshot();
+            if (webRes.success) {
+                try {
+                    // --- JSON Temizliği ---
+                    std::string cleanJson = webRes.jsonOutput;
+                    size_t jsonStart = cleanJson.find('{'); // İlk süslü parantez
+                    size_t jsonEnd = cleanJson.rfind('}');  // Son süslü parantez
+                    
+                    if (jsonStart != std::string::npos && jsonEnd != std::string::npos) {
+                        // Node.js uyarılarını at, sadece { ... } arasını al
+                        cleanJson = cleanJson.substr(jsonStart, jsonEnd - jsonStart + 1);
+                        
+                        json webJson = json::parse(cleanJson); // Artık temiz
+                        
+                        if (!webJson.contains("error")) {
+                            // Koordinat düzeltme
+                            POINT vpOffset = GetBrowserViewportOffset(fg);
+                            int offsetX = vpOffset.x;
+                            int offsetY = vpOffset.y;
+
+                            if (webJson.contains("elements")) {
+                                for (auto& el : webJson["elements"]) {
+                                    if (el.contains("rect")) {
+                                        el["rect"]["l"] = (int)(el["rect"]["x"].get<double>() + offsetX);
+                                        el["rect"]["t"] = (int)(el["rect"]["y"].get<double>() + offsetY);
+                                        el["rect"]["r"] = (int)(el["rect"]["l"].get<int>() + el["rect"]["w"].get<double>());
+                                        el["rect"]["b"] = (int)(el["rect"]["t"].get<int>() + el["rect"]["h"].get<double>());
+                                    }
+                                    if (el.contains("center")) {
+                                        el["center"]["x"] = (int)(el["center"]["x"].get<double>() + offsetX);
+                                        el["center"]["y"] = (int)(el["center"]["y"].get<double>() + offsetY);
+                                    }
+                                }
+                            }
+
+                            res.set_content(webJson.dump(), "application/json");
+                            return; // ÇIKIŞ
+                        } else {
+                            webError = webJson["error"].get<std::string>();
+                            std::cout << "[ERROR] Web JSON Error: " << webError << std::endl;
+                        }
+                    } else {
+                        webError = "Invalid JSON format (No brackets found). Raw: " + webRes.jsonOutput;
+                        std::cout << "[ERROR] " << webError << std::endl;
+                    }
+
+                } catch (std::exception& e) {
+                    webError = std::string(e.what()) + " | Raw: " + webRes.jsonOutput;
+                    std::cout << "[ERROR] Web Parse Error: " << webError << std::endl;
+                }
+            } else {
+                webError = webRes.errorMessage;
+                std::cout << "[ERROR] Web Bridge Error: " << webError << std::endl;
+            }
+        }
+        // ======================= Web Modülü Entegrasyonu Bitişi =======================
+
+
         std::string jvmError;
-        try {
-            auto snapshot = jvm_bridge::CaptureSnapshot(std::nullopt);
-            if (!snapshot.success) {
-                throw std::runtime_error(snapshot.errorMessage);
-            }
-            json payload = json::parse(snapshot.snapshotJson);
-            json response = json::object();
-            response["stateType"] = "jvm";
-            std::optional<std::string> b64Data;
-            for (auto it = payload.begin(); it != payload.end(); ++it) {
-                if (it.key() == "b64" && it.value().is_string()) {
-                    b64Data = it.value().get<std::string>();
-                    continue;
+        // Eğer Browser ise JVM denemeye gerek yok, direkt Windows'a düşsün (Performans için)
+        if (!isBrowser) {
+            try {
+                auto snapshot = jvm_bridge::CaptureSnapshot(std::nullopt);
+                if (!snapshot.success) {
+                    throw std::runtime_error(snapshot.errorMessage);
                 }
-                response[it.key()] = it.value();
-            }
-            const std::wstring base = ExeDir();
-            const std::wstring ts   = TimeStamp();
-            const std::wstring logsDir = base + L"\\state_logs";
-            EnsureDir(logsDir);
-            const std::wstring jsonPath = logsDir + L"\\state_jvm_" + ts + L".json";
-            const std::wstring shotsDir = base + L"\\state_screenshots";
-            EnsureDir(shotsDir);
-            const std::wstring pngPath = shotsDir + L"\\state_jvm_" + ts + L".png";
-
-            bool screenshotWritten = false;
-            if (b64Data && !b64Data->empty()) {
-                response["b64"] = *b64Data;
-                response["screenshot"] = { {"format", "png"} };
-
-                std::string decoded = base64_decode(*b64Data);
-                if (!decoded.empty()) {
-                    WriteAllBytes(pngPath, decoded.data(), static_cast<DWORD>(decoded.size()));
-                    screenshotWritten = true;
+                json payload = json::parse(snapshot.snapshotJson);
+                json response = json::object();
+                response["stateType"] = "jvm";
+                std::optional<std::string> b64Data;
+                for (auto it = payload.begin(); it != payload.end(); ++it) {
+                    if (it.key() == "b64" && it.value().is_string()) {
+                        b64Data = it.value().get<std::string>();
+                        continue;
+                    }
+                    response[it.key()] = it.value();
                 }
-            } else {
-                response["screenshot"] = { {"format", "png"} };
+
+                if (b64Data && !b64Data->empty()) {
+                    response["b64"] = *b64Data;
+                    response["screenshot"] = { {"format", "png"} };
+                } else {
+                    response["screenshot"] = { {"format", "png"} };
+                }
+
+                res.set_content(response.dump(), "application/json");
+                return;
+            } catch (const std::exception& ex) {
+                jvmError = ex.what();
             }
-
-            const std::string responseStr = response.dump();
-
-            json logResponse = response;
-            if (screenshotWritten) {
-                logResponse["screenshot"]["filePath"] = ws2utf8(pngPath);
-            } else {
-                logResponse["screenshot"]["filePath"] = nullptr;
-            }
-            WriteAllTextUtf8(jsonPath, logResponse.dump());
-
-            res.set_content(responseStr, "application/json");
-            return;
-        } catch (const std::exception& ex) {
-            jvmError = ex.what();
         }
 
         std::vector<unsigned char> png_raw;
@@ -270,24 +299,17 @@ int main(){
         if (!jvmError.empty()) {
             j["fallbackReason"] = jvmError;
         }
-
-        const std::wstring base = ExeDir();
-        const std::wstring ts   = TimeStamp();
-        const std::wstring logsDir = base + L"\\state_logs";
-        const std::wstring shotsDir  = base + L"\\state_screenshots";
-        EnsureDir(logsDir);
-        EnsureDir(shotsDir);
-
-        const std::wstring jsonPath = logsDir + L"\\state_windows_" + ts + L".json";
-        const std::wstring pngPath  = shotsDir  + L"\\state_windows_" + ts + L".png";
-
-        const std::string jsonStr = j.dump();
-        WriteAllTextUtf8(jsonPath, jsonStr);
-        if(!png_raw.empty()){
-            WriteAllBytes(pngPath, png_raw.data(), (DWORD)png_raw.size());
+        // Web hatası varsa onu da fallback mesajına ekle
+        if (!webError.empty()) {
+             if (j.contains("fallbackReason")) {
+                 std::string existing = j["fallbackReason"];
+                 j["fallbackReason"] = "[Web: " + webError + "] " + existing;
+             } else {
+                 j["fallbackReason"] = "[Web: " + webError + "]";
+             }
         }
 
-        res.set_content(jsonStr, "application/json");
+        res.set_content(j.dump(), "application/json");
     });
 
     // ---- JVM STATE endpoint
@@ -331,13 +353,6 @@ int main(){
             if (snapshot.usedPid) {
                 err["pid"] = *snapshot.usedPid;
             }
-            const std::wstring base = ExeDir();
-            const std::wstring ts   = TimeStamp();
-            const std::wstring logsDir = base + L"\\jvmstate_logs";
-            EnsureDir(logsDir);
-            const std::wstring errPath = logsDir + L"\\jvmstate_error_" + ts + L".json";
-            WriteAllTextUtf8(errPath, err.dump());
-
             res.status = 500;
             res.set_content(err.dump(), "application/json");
             return;
@@ -355,39 +370,13 @@ int main(){
                 }
                 response[it.key()] = it.value();
             }
-            const std::wstring base = ExeDir();
-            const std::wstring ts   = TimeStamp();
-            const std::wstring logsDir = base + L"\\jvmstate_logs";
-            const std::wstring shotsDir = base + L"\\jvmstate_screenshots";
-            EnsureDir(logsDir);
-            EnsureDir(shotsDir);
-            const std::wstring jsonPath = logsDir + L"\\jvmstate_" + ts + L".json";
-            const std::wstring pngPath = shotsDir + L"\\jvmstate_" + ts + L".png";
-            bool screenshotWritten = false;
             if (b64Data && !b64Data->empty()) {
                 response["b64"] = *b64Data;
                 response["screenshot"] = { {"format", "png"} };
-
-                std::string decoded = base64_decode(*b64Data);
-                if (!decoded.empty()) {
-                    WriteAllBytes(pngPath, decoded.data(), static_cast<DWORD>(decoded.size()));
-                    screenshotWritten = true;
-                }
             } else {
                 response["screenshot"] = { {"format", "png"} };
             }
-
-            const std::string responseStr = response.dump();
-
-            json logResponse = response;
-            if (screenshotWritten) {
-                logResponse["screenshot"]["filePath"] = ws2utf8(pngPath);
-            } else {
-                logResponse["screenshot"]["filePath"] = nullptr;
-            }
-            WriteAllTextUtf8(jsonPath, logResponse.dump());
-
-            res.set_content(responseStr, "application/json");
+            res.set_content(response.dump(), "application/json");
         } catch (const std::exception& ex) {
             json err = {
                 {"status", "error"},
@@ -398,13 +387,6 @@ int main(){
             if (snapshot.usedPid) {
                 err["pid"] = *snapshot.usedPid;
             }
-            const std::wstring base = ExeDir();
-            const std::wstring ts   = TimeStamp();
-            const std::wstring logsDir = base + L"\\jvmstate_logs";
-            EnsureDir(logsDir);
-            const std::wstring errPath = logsDir + L"\\jvmstate_error_parse_" + ts + L".json";
-            WriteAllTextUtf8(errPath, err.dump());
-
             res.status = 500;
             res.set_content(err.dump(), "application/json");
         }

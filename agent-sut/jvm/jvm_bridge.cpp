@@ -301,6 +301,8 @@ std::wstring BuildCommandLine(const fs::path& runtimeDir, const fs::path& jarPat
     if (pid) {
         command += L" " + std::to_wstring(*pid);
     }
+    // Pass log directory as second argument so Java agent knows where to write snapshot files
+    command += L" \"" + logDir.wstring() + L"\"";
     command += L" > \"" + logPath.wstring() + L"\" 2>&1\"";
     return command;
 }

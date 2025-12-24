@@ -1,0 +1,6 @@
+elementfinder\core\ComponentNode.class
+elementfinder\cli\ActiveJvmFinder.class
+elementfinder\core\ElementScanner.class
+elementfinder\agent\ElementFinderAgent$OutputContext.class
+elementfinder\agent\ElementFinderAgent.class
+elementfinder\cli\AttachMain.class

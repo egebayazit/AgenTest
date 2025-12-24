@@ -34,6 +34,11 @@ public final class AttachMain {
                 ? args[0].trim()
                 : null;
 
+        // Second argument is the log directory (passed from C++ code)
+        final String logDirArg = (args.length > 1 && !args[1].isBlank())
+                ? args[1].trim()
+                : null;
+
         VirtualMachineDescriptor descriptor = null;
         if (requestedPid != null) {
             Optional<VirtualMachineDescriptor> explicitTarget = descriptors.stream()
@@ -66,7 +71,10 @@ public final class AttachMain {
             return;
         }
 
-        Path logDirectory = ElementFinderAgent.defaultLogDirectory().toAbsolutePath();
+        // Use log directory from argument if provided, otherwise use default
+        Path logDirectory = (logDirArg != null)
+                ? Paths.get(logDirArg).toAbsolutePath()
+                : ElementFinderAgent.defaultLogDirectory().toAbsolutePath();
         try {
             Files.createDirectories(logDirectory);
         } catch (IOException e) {
