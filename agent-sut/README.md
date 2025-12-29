@@ -10,7 +10,10 @@
 
 ### Tum SUT'u CMake ile derlemek 
 ```powershell
-cd AgenTest\agent-sut
+cd AgenTest\agent-sut/web
+
+pyinstaller --onefile --name web_agent web_agent.py
+cd ..
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```

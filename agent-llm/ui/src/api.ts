@@ -15,12 +15,20 @@ export interface SavedTest {
     steps_count: number;
     action_id: string;
     modified_at: number;
+    mode?: 'test' | 'agent';
 }
 
 export interface RunRequest {
     scenario_name: string;
     steps: TestStep[];
     temperature?: number;
+}
+
+export interface TokenUsage {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    provider: string;
 }
 
 export interface StepOutcome {
@@ -33,7 +41,14 @@ export interface StepOutcome {
         status: string;
         attempts: number;
         reason?: string;
-        actions: any[];
+        actions: {
+            action_id: string;
+            plan: any;
+            ack: any;
+            state_before: any;
+            state_after: any;
+            token_usage?: TokenUsage;
+        }[];
     };
 }
 
@@ -62,6 +77,81 @@ export interface ConfigResponse {
     model: string;
     action_url: string;
 }
+
+export interface LLMSettings {
+    provider: string;
+    base_url: string;
+    model: string;
+    api_key_masked?: string;
+    has_api_key?: boolean;
+}
+
+export interface LLMSettingsInput {
+    provider: string;
+    base_url: string;
+    model: string;
+    api_key?: string;
+}
+
+export interface LLMProvider {
+    id: string;
+    name: string;
+    requires_key: boolean;
+}
+
+// ============================================================================
+// AGENT MODE TYPES
+// ============================================================================
+
+export interface AgentStep {
+    instruction: string;
+    note?: string;
+}
+
+export interface AgentRunRequest {
+    scenario_name: string;
+    instructions: AgentStep[];
+    temperature?: number;
+    use_ods?: boolean;
+}
+
+export interface AgentStepOutcome {
+    instruction: {
+        instruction: string;
+        note?: string;
+    };
+    result: {
+        status: string;
+        actions: {
+            action_id: string;
+            plan: any;
+            ack: any;
+            state_before: any;
+            state_after: any;
+            token_usage?: TokenUsage;
+        }[];
+        final_state: any;
+        last_plan: any;
+        reason?: string;
+    };
+}
+
+export interface AgentResult {
+    status: string;
+    steps: AgentStepOutcome[];
+    final_state?: any;
+    reason?: string;
+    _meta?: {
+        mode: string;
+        duration_sec: number;
+        total_instructions: number;
+        executed_count: number;
+        failed_count: number;
+        provider: string;
+        use_ods: boolean;
+    };
+}
+
 
 const api = {
     // Health check
@@ -112,8 +202,45 @@ const api = {
     // Stop execution
     async stopExecution(): Promise<void> {
         await axios.post(`${API_BASE}/stop`);
+    },
+
+    // ============================================================================
+    // SETTINGS API
+    // ============================================================================
+
+    // Get current LLM settings
+    async getSettings(): Promise<LLMSettings> {
+        const resp = await axios.get(`${API_BASE}/settings`);
+        return resp.data.settings;
+    },
+
+    // Save LLM settings
+    async saveSettings(settings: LLMSettingsInput): Promise<void> {
+        await axios.post(`${API_BASE}/settings`, settings);
+    },
+
+    // Test LLM connection
+    async testConnection(): Promise<{ success: boolean; message: string }> {
+        const resp = await axios.post(`${API_BASE}/settings/test`);
+        return resp.data;
+    },
+
+    // Get available providers
+    async getProviders(): Promise<LLMProvider[]> {
+        const resp = await axios.get(`${API_BASE}/settings/providers`);
+        return resp.data.providers;
+    },
+
+    // ============================================================================
+    // AGENT MODE API
+    // ============================================================================
+
+    // Run agent scenario (no semantic filtering, no pre-check, no expected result)
+    async runAgentScenario(request: AgentRunRequest): Promise<AgentResult> {
+        const resp = await axios.post(`${API_BASE}/run-agent`, request);
+        return resp.data;
     }
-};
+}
 
 export default api;
 

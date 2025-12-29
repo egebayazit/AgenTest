@@ -23,9 +23,10 @@ import {
     Square,
     SkipForward
 } from 'lucide-react';
-import api, { SavedTest, TestStep, ScenarioResult, StepOutcome } from './api';
+import api, { SavedTest, TestStep, ScenarioResult, StepOutcome, LLMProvider, AgentStep, AgentResult } from './api';
 
 type TabType = 'new' | 'saved';
+type ExecutionModeType = 'test' | 'agent';
 
 interface ActionStep {
     type: string;
@@ -53,6 +54,14 @@ interface TestData {
     step_definitions?: StepDefinition[];
 }
 
+// Anthropic pricing: $3/MTok input, $15/MTok output
+const calculateAnthropicCost = (inputTokens: number, outputTokens: number): string => {
+    const inputCost = (inputTokens / 1_000_000) * 3;
+    const outputCost = (outputTokens / 1_000_000) * 15;
+    const totalCost = inputCost + outputCost;
+    return totalCost < 0.01 ? `$${totalCost.toFixed(4)}` : `$${totalCost.toFixed(3)}`;
+};
+
 function App() {
     // State
     const [isOnline, setIsOnline] = useState(false);
@@ -75,14 +84,42 @@ function App() {
 
     // Execution
     const [isRunning, setIsRunning] = useState(false);
+    const [executionType, setExecutionType] = useState<'run' | 'replay'>('run');
     const [executionLogs, setExecutionLogs] = useState<string[]>([]);
     const [results, setResults] = useState<ScenarioResult | null>(null);
+    const [agentResults, setAgentResults] = useState<AgentResult | null>(null);
     const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+
+    // Execution Mode (Test Mode vs Agent Mode)
+    const [executionMode, setExecutionMode] = useState<ExecutionModeType>('test');
+
+    // Agent Mode state
+    const [agentSteps, setAgentSteps] = useState<AgentStep[]>([{ instruction: '', note: '' }]);
+    const [useOds, setUseOds] = useState(false);
+
+    // Settings modal
+    const [showSettings, setShowSettings] = useState(false);
+    const [providers, setProviders] = useState<LLMProvider[]>([]);
+    const [settingsForm, setSettingsForm] = useState<{
+        provider: string;
+        base_url: string;
+        api_key: string;
+        model: string;
+    }>({
+        provider: 'ollama',
+        base_url: 'http://localhost:11434',
+        api_key: '',
+        model: ''
+    });
+    const [settingsSaving, setSettingsSaving] = useState(false);
+    const [settingsTesting, setSettingsTesting] = useState(false);
+    const [settingsTestResult, setSettingsTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
     // Load initial data
     useEffect(() => {
         checkHealth();
         loadSavedTests();
+        loadProviders();
         const interval = setInterval(checkHealth, 30000);
         return () => clearInterval(interval);
     }, []);
@@ -144,6 +181,23 @@ function App() {
         }
     };
 
+    // Agent step management
+    const addAgentStep = () => {
+        setAgentSteps([...agentSteps, { instruction: '', note: '' }]);
+    };
+
+    const updateAgentStep = (index: number, field: keyof AgentStep, value: string) => {
+        const newSteps = [...agentSteps];
+        newSteps[index] = { ...newSteps[index], [field]: value };
+        setAgentSteps(newSteps);
+    };
+
+    const removeAgentStep = (index: number) => {
+        if (agentSteps.length > 1) {
+            setAgentSteps(agentSteps.filter((_, i) => i !== index));
+        }
+    };
+
     const moveStep = (index: number, direction: 'up' | 'down') => {
         const newIndex = direction === 'up' ? index - 1 : index + 1;
         if (newIndex < 0 || newIndex >= steps.length) return;
@@ -177,6 +231,7 @@ function App() {
         }
 
         setIsRunning(true);
+        setExecutionType('run');
         setResults(null);
         setExecutionLogs([]);
         setActiveTab('saved');
@@ -209,9 +264,52 @@ function App() {
         }
     };
 
+    // Run Agent Mode scenario
+    const runAgentScenario = async () => {
+        if (!scenarioName.trim() || agentSteps.some(s => !s.instruction.trim())) {
+            alert('Please fill in scenario name and all instruction fields');
+            return;
+        }
+
+        setIsRunning(true);
+        setExecutionType('run');
+        setResults(null);
+        setAgentResults(null);
+        setExecutionLogs([]);
+        setActiveTab('saved');
+
+        // Start polling logs
+        const pollInterval = setInterval(async () => {
+            try {
+                const response = await fetch('/api/logs');
+                const data = await response.json();
+                setExecutionLogs(data.logs || []);
+            } catch (e) {
+                // Ignore poll errors
+            }
+        }, 500);
+
+        try {
+            const result = await api.runAgentScenario({
+                scenario_name: scenarioName,
+                instructions: agentSteps.filter(s => s.instruction.trim()),
+                temperature: 0.1,
+                use_ods: useOds
+            });
+            setAgentResults(result);
+        } catch (e: any) {
+            console.error('Agent run failed', e);
+            alert('Agent execution failed: ' + (e.response?.data?.detail || e.message));
+        } finally {
+            clearInterval(pollInterval);
+            setIsRunning(false);
+        }
+    };
+
     // Replay saved test
     const replayTest = async (testName: string) => {
         setIsRunning(true);
+        setExecutionType('replay');
         setResults(null);
         setExecutionLogs([]);
         setSelectedTest(testName);
@@ -280,19 +378,40 @@ function App() {
             if (details.data?.execution_result && details.data.execution_result.length > 0) {
                 setSelectedTest(testName);
                 setSelectedTestData(details.data);
-                // Display saved execution result
-                setResults({
-                    status: 'passed',
-                    steps: details.data.execution_result,
-                    _meta: {
-                        duration_sec: details.data.execution_duration || 0,
-                        total_steps: details.data.execution_result.length,
-                        passed_steps: details.data.execution_result.filter((s: any) => s.result.status === 'passed').length,
-                        failed_steps: details.data.execution_result.filter((s: any) => s.result.status !== 'passed').length,
-                        total_attempts: details.data.execution_result.reduce((acc: number, s: any) => acc + s.result.attempts, 0),
-                        backend_config: { provider: 'saved', model: 'Original Execution', max_tokens: 0 }
-                    }
-                });
+
+                // Check if this is an Agent Mode test
+                if (details.data.mode === 'agent') {
+                    // Display as Agent Mode results
+                    setResults(null);
+                    setAgentResults({
+                        status: 'completed',
+                        steps: details.data.execution_result,
+                        _meta: {
+                            mode: 'agent',
+                            duration_sec: details.data.execution_duration || 0,
+                            total_instructions: details.data.execution_result.length,
+                            executed_count: details.data.execution_result.filter((s: any) => s.result.status === 'executed').length,
+                            failed_count: details.data.execution_result.filter((s: any) => s.result.status === 'failed').length,
+                            provider: 'saved',
+                            use_ods: details.data.use_ods || false
+                        }
+                    });
+                } else {
+                    // Display as Test Mode results
+                    setAgentResults(null);
+                    setResults({
+                        status: 'passed',
+                        steps: details.data.execution_result,
+                        _meta: {
+                            duration_sec: details.data.execution_duration || 0,
+                            total_steps: details.data.execution_result.length,
+                            passed_steps: details.data.execution_result.filter((s: any) => s.result.status === 'passed').length,
+                            failed_steps: details.data.execution_result.filter((s: any) => s.result.status !== 'passed').length,
+                            total_attempts: details.data.execution_result.reduce((acc: number, s: any) => acc + s.result.attempts, 0),
+                            backend_config: { provider: 'saved', model: 'Original Execution', max_tokens: 0 }
+                        }
+                    });
+                }
                 setActiveTab('saved');
             } else {
                 alert('No saved execution results for this test. Run the test first to generate results.');
@@ -374,6 +493,82 @@ function App() {
         });
     };
 
+    // Settings functions
+    const loadProviders = async () => {
+        try {
+            const provList = await api.getProviders();
+            setProviders(provList);
+        } catch (e) {
+            console.error('Failed to load providers', e);
+        }
+    };
+
+    const openSettings = async () => {
+        setShowSettings(true);
+        setSettingsTestResult(null);
+        try {
+            const settings = await api.getSettings();
+            setSettingsForm({
+                provider: settings.provider || 'ollama',
+                base_url: settings.base_url || 'http://localhost:11434',
+                api_key: '', // Never show actual key
+                model: settings.model || ''
+            });
+        } catch (e) {
+            console.error('Failed to load settings', e);
+        }
+    };
+
+    const saveSettings = async () => {
+        setSettingsSaving(true);
+        try {
+            await api.saveSettings({
+                provider: settingsForm.provider,
+                base_url: settingsForm.base_url,
+                api_key: settingsForm.api_key || undefined,
+                model: settingsForm.model
+            });
+            setShowSettings(false);
+            checkHealth(); // Refresh config display
+            alert('Settings saved successfully!');
+        } catch (e: any) {
+            alert('Failed to save settings: ' + (e.response?.data?.detail || e.message));
+        } finally {
+            setSettingsSaving(false);
+        }
+    };
+
+    const testConnection = async () => {
+        setSettingsTesting(true);
+        setSettingsTestResult(null);
+        try {
+            // Save settings first, then test
+            await api.saveSettings({
+                provider: settingsForm.provider,
+                base_url: settingsForm.base_url,
+                api_key: settingsForm.api_key || undefined,
+                model: settingsForm.model
+            });
+            const result = await api.testConnection();
+            setSettingsTestResult(result);
+        } catch (e: any) {
+            setSettingsTestResult({ success: false, message: e.response?.data?.detail || e.message });
+        } finally {
+            setSettingsTesting(false);
+        }
+    };
+
+    const getDefaultUrl = (provider: string) => {
+        switch (provider) {
+            case 'ollama': return 'http://localhost:11434';
+            case 'lmstudio': return 'http://localhost:1234/v1';
+            case 'openrouter': return 'https://openrouter.ai/api/v1';
+            case 'openai': return 'https://api.openai.com/v1';
+            case 'custom': return 'http://localhost:8080/v1';
+            default: return '';
+        }
+    };
+
     return (
         <div className="app-container">
             {/* Header */}
@@ -383,6 +578,50 @@ function App() {
                     <h1>AgenTest</h1>
                     <span>Test Automation Agent</span>
                 </div>
+
+                {/* Mode Selector in Header */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    background: 'var(--gray-100)',
+                    borderRadius: '6px',
+                    padding: '0.25rem'
+                }}>
+                    <button
+                        onClick={() => setExecutionMode('test')}
+                        style={{
+                            padding: '0.4rem 0.75rem',
+                            borderRadius: '4px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: 500,
+                            background: executionMode === 'test' ? 'var(--primary-blue)' : 'transparent',
+                            color: executionMode === 'test' ? 'white' : 'var(--gray-600)',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        Test Mode
+                    </button>
+                    <button
+                        onClick={() => setExecutionMode('agent')}
+                        style={{
+                            padding: '0.4rem 0.75rem',
+                            borderRadius: '4px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: 500,
+                            background: executionMode === 'agent' ? 'var(--primary-blue)' : 'transparent',
+                            color: executionMode === 'agent' ? 'white' : 'var(--gray-600)',
+                            transition: 'all 0.15s ease'
+                        }}
+                    >
+                        Agent Mode
+                    </button>
+                </div>
+
                 <div className="header-status">
                     <div className={`status-dot ${isOnline ? '' : 'offline'}`} />
                     {isOnline ? (
@@ -390,6 +629,14 @@ function App() {
                     ) : (
                         <span>Offline</span>
                     )}
+                    <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={openSettings}
+                        title="LLM Settings"
+                        style={{ marginLeft: '0.75rem' }}
+                    >
+                        <Settings size={18} />
+                    </button>
                 </div>
             </header>
 
@@ -483,7 +730,21 @@ function App() {
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                             {selectedTest === test.name ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                                                             <div className="test-item-info">
-                                                                <span className="test-item-name">{test.name}</span>
+                                                                <span className="test-item-name">
+                                                                    {test.name}
+                                                                    {test.mode === 'agent' && (
+                                                                        <span style={{
+                                                                            marginLeft: '0.35rem',
+                                                                            fontSize: '0.55rem',
+                                                                            padding: '0.1rem 0.3rem',
+                                                                            background: 'var(--primary-blue)',
+                                                                            color: 'white',
+                                                                            borderRadius: '3px',
+                                                                            fontWeight: 600,
+                                                                            verticalAlign: 'middle'
+                                                                        }}>A</span>
+                                                                    )}
+                                                                </span>
                                                                 <span className="test-item-meta">
                                                                     {test.steps_count} actions • {formatDate(test.modified_at)}
                                                                 </span>
@@ -565,7 +826,7 @@ function App() {
                                                                                     </div>
                                                                                     {def.note_to_llm && (
                                                                                         <div style={{ fontSize: '0.65rem', color: 'var(--gray-400)', marginTop: '0.15rem', fontStyle: 'italic' }}>
-                                                                                            💡 {def.note_to_llm}
+                                                                                            Note: {def.note_to_llm}
                                                                                         </div>
                                                                                     )}
                                                                                 </div>
@@ -612,7 +873,7 @@ function App() {
                     {activeTab === 'new' && (
                         <div className="panel">
                             <div className="panel-header">
-                                <h2>Create Test Scenario</h2>
+                                <h2>Create Scenario</h2>
                             </div>
                             <div className="panel-content">
                                 {/* Scenario Name */}
@@ -627,107 +888,200 @@ function App() {
                                     />
                                 </div>
 
-                                {/* Steps */}
-                                <div className="form-group">
-                                    <label className="form-label">Test Steps</label>
-                                    <div className="step-list">
-                                        {steps.map((step, index) => (
-                                            <div key={index} className={`step-card ${step.skipped ? 'skipped' : ''}`}>
-                                                <div className="step-card-header">
-                                                    <span className="step-number">{step.skipped ? '—' : index + 1}</span>
-                                                    <div className="step-card-actions">
-                                                        <button
-                                                            className={`btn btn-ghost btn-sm btn-skip ${step.skipped ? 'active' : ''}`}
-                                                            onClick={() => toggleSkip(index)}
-                                                            title={step.skipped ? 'Enable Step' : 'Skip Step'}
-                                                        >
-                                                            <SkipForward size={14} />
-                                                        </button>
-                                                        {index > 0 && (
-                                                            <button className="btn btn-ghost btn-sm" onClick={() => moveStep(index, 'up')}>↑</button>
-                                                        )}
-                                                        {index < steps.length - 1 && (
-                                                            <button className="btn btn-ghost btn-sm" onClick={() => moveStep(index, 'down')}>↓</button>
-                                                        )}
-                                                        {steps.length > 1 && (
-                                                            <button className="btn btn-ghost btn-sm" onClick={() => removeStep(index)}>
-                                                                <Trash2 size={14} />
-                                                            </button>
-                                                        )}
+                                {/* Test Mode Form */}
+                                {executionMode === 'test' && (
+                                    <>
+                                        <div className="form-group">
+                                            <label className="form-label">Test Steps</label>
+                                            <div className="step-list">
+                                                {steps.map((step, index) => (
+                                                    <div key={index} className={`step-card ${step.skipped ? 'skipped' : ''}`}>
+                                                        <div className="step-card-header">
+                                                            <span className="step-number">{step.skipped ? '—' : index + 1}</span>
+                                                            <div className="step-card-actions">
+                                                                <button
+                                                                    className={`btn btn-ghost btn-sm btn-skip ${step.skipped ? 'active' : ''}`}
+                                                                    onClick={() => toggleSkip(index)}
+                                                                    title={step.skipped ? 'Enable Step' : 'Skip Step'}
+                                                                >
+                                                                    <SkipForward size={14} />
+                                                                </button>
+                                                                {index > 0 && (
+                                                                    <button className="btn btn-ghost btn-sm" onClick={() => moveStep(index, 'up')}>↑</button>
+                                                                )}
+                                                                {index < steps.length - 1 && (
+                                                                    <button className="btn btn-ghost btn-sm" onClick={() => moveStep(index, 'down')}>↓</button>
+                                                                )}
+                                                                {steps.length > 1 && (
+                                                                    <button className="btn btn-ghost btn-sm" onClick={() => removeStep(index)}>
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div className="step-card-body">
+                                                            <div className="form-group">
+                                                                <label className="form-label">Test Step (Action) *</label>
+                                                                <input
+                                                                    type="text"
+                                                                    className="form-input"
+                                                                    placeholder="e.g., Click 'Login' button"
+                                                                    value={step.test_step}
+                                                                    onChange={(e) => updateStep(index, 'test_step', e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label className="form-label">Expected Result *</label>
+                                                                <input
+                                                                    type="text"
+                                                                    className="form-input"
+                                                                    placeholder="e.g., Dashboard page loads"
+                                                                    value={step.expected_result}
+                                                                    onChange={(e) => updateStep(index, 'expected_result', e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label className="form-label">Note to LLM (Optional)</label>
+                                                                <input
+                                                                    type="text"
+                                                                    className="form-input"
+                                                                    placeholder="e.g., Button is in top-right corner"
+                                                                    value={step.note_to_llm || ''}
+                                                                    onChange={(e) => updateStep(index, 'note_to_llm', e.target.value)}
+                                                                />
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                <div className="step-card-body">
-                                                    <div className="form-group">
-                                                        <label className="form-label">Test Step (Action) *</label>
-                                                        <input
-                                                            type="text"
-                                                            className="form-input"
-                                                            placeholder="e.g., Click 'Login' button"
-                                                            value={step.test_step}
-                                                            onChange={(e) => updateStep(index, 'test_step', e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <div className="form-group">
-                                                        <label className="form-label">Expected Result *</label>
-                                                        <input
-                                                            type="text"
-                                                            className="form-input"
-                                                            placeholder="e.g., Dashboard page loads"
-                                                            value={step.expected_result}
-                                                            onChange={(e) => updateStep(index, 'expected_result', e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <div className="form-group">
-                                                        <label className="form-label">Note to LLM (Optional)</label>
-                                                        <input
-                                                            type="text"
-                                                            className="form-input"
-                                                            placeholder="e.g., Button is in top-right corner"
-                                                            value={step.note_to_llm || ''}
-                                                            onChange={(e) => updateStep(index, 'note_to_llm', e.target.value)}
-                                                        />
-                                                    </div>
-                                                </div>
+                                                ))}
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
+                                        </div>
 
-                                {/* Actions */}
-                                <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-                                    <button className="btn btn-secondary" onClick={addStep}>
-                                        <Plus size={16} /> Add Step
-                                    </button>
-                                    {isRunning ? (
-                                        <button
-                                            className="btn btn-lg"
-                                            onClick={stopExecution}
-                                            style={{
-                                                marginLeft: 'auto',
-                                                background: '#dc2626',
-                                                color: 'white',
-                                                border: 'none'
-                                            }}
-                                        >
-                                            <Square size={16} fill="white" /> Stop
-                                        </button>
-                                    ) : (
-                                        <button
-                                            className="btn btn-primary btn-lg"
-                                            onClick={runScenario}
-                                            disabled={!isOnline}
-                                            style={{ marginLeft: 'auto' }}
-                                        >
-                                            <Play size={16} /> Run Test
-                                        </button>
-                                    )}
-                                </div>
+                                        {/* Test Mode Actions */}
+                                        <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                                            <button className="btn btn-secondary" onClick={addStep}>
+                                                <Plus size={16} /> Add Step
+                                            </button>
+                                            {isRunning ? (
+                                                <button
+                                                    className="btn btn-lg"
+                                                    onClick={stopExecution}
+                                                    style={{
+                                                        marginLeft: 'auto',
+                                                        background: '#dc2626',
+                                                        color: 'white',
+                                                        border: 'none'
+                                                    }}
+                                                >
+                                                    <Square size={16} fill="white" /> Stop
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    className="btn btn-primary btn-lg"
+                                                    onClick={runScenario}
+                                                    disabled={!isOnline}
+                                                    style={{ marginLeft: 'auto' }}
+                                                >
+                                                    <Play size={16} /> Run Test
+                                                </button>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* Agent Mode Form */}
+                                {executionMode === 'agent' && (
+                                    <>
+                                        {/* Use ODS Option */}
+                                        <div className="form-group" style={{ marginBottom: '1rem' }}>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--gray-600)' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={useOds}
+                                                    onChange={(e) => setUseOds(e.target.checked)}
+                                                />
+                                                Use ODS (instead of WinDriver)
+                                            </label>
+                                        </div>
+
+                                        <div className="form-group">
+                                            <label className="form-label">Instructions</label>
+                                            <div className="step-list">
+                                                {agentSteps.map((step, index) => (
+                                                    <div key={index} className="step-card">
+                                                        <div className="step-card-header">
+                                                            <span className="step-number">{index + 1}</span>
+                                                            <div className="step-card-actions">
+                                                                {agentSteps.length > 1 && (
+                                                                    <button className="btn btn-ghost btn-sm" onClick={() => removeAgentStep(index)}>
+                                                                        <Trash2 size={14} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div className="step-card-body">
+                                                            <div className="form-group">
+                                                                <label className="form-label">Instruction *</label>
+                                                                <input
+                                                                    type="text"
+                                                                    className="form-input"
+                                                                    placeholder="e.g., Click the Settings button"
+                                                                    value={step.instruction}
+                                                                    onChange={(e) => updateAgentStep(index, 'instruction', e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label className="form-label">Note (Optional)</label>
+                                                                <input
+                                                                    type="text"
+                                                                    className="form-input"
+                                                                    placeholder="e.g., Top-right corner"
+                                                                    value={step.note || ''}
+                                                                    onChange={(e) => updateAgentStep(index, 'note', e.target.value)}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Agent Mode Actions */}
+                                        <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                                            <button className="btn btn-secondary" onClick={addAgentStep}>
+                                                <Plus size={16} /> Add Instruction
+                                            </button>
+                                            {isRunning ? (
+                                                <button
+                                                    className="btn btn-lg"
+                                                    onClick={stopExecution}
+                                                    style={{
+                                                        marginLeft: 'auto',
+                                                        background: '#dc2626',
+                                                        color: 'white',
+                                                        border: 'none'
+                                                    }}
+                                                >
+                                                    <Square size={16} fill="white" /> Stop
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    className="btn btn-primary btn-lg"
+                                                    onClick={runAgentScenario}
+                                                    disabled={!isOnline}
+                                                    style={{ marginLeft: 'auto' }}
+                                                >
+                                                    <Play size={16} /> Run Agent
+                                                </button>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     )}
 
                     {/* Execution Logs Panel - shown while running */}
-                    {activeTab === 'saved' && isRunning && executionLogs.length > 0 && (
+                    {isRunning && (
                         <div className="execution-logs-panel" style={{
                             background: 'white',
                             border: '1px solid var(--gray-200)',
@@ -739,7 +1093,9 @@ function App() {
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', borderBottom: '1px solid var(--gray-100)', paddingBottom: '0.5rem' }}>
                                 <div className="spinner" style={{ width: '14px', height: '14px' }} />
-                                <span style={{ color: 'var(--gray-600)', fontWeight: 500, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Execution Log</span>
+                                <span style={{ color: 'var(--gray-600)', fontWeight: 500, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    {executionLogs.length > 0 ? 'Execution Log' : (executionType === 'replay' ? 'Replaying...' : 'Running...')}
+                                </span>
                                 <button
                                     onClick={stopExecution}
                                     style={{
@@ -760,22 +1116,30 @@ function App() {
                                     <Square size={12} fill="white" /> Stop
                                 </button>
                             </div>
-                            <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8rem', lineHeight: '1.6' }}>
-                                {executionLogs.map((log, idx) => (
-                                    <div key={idx} style={{
-                                        color: log.includes('✅') || log.includes('✓') ? '#059669' :
-                                            log.includes('❌') ? '#dc2626' :
-                                                'var(--gray-500)',
-                                        padding: '0.15rem 0'
-                                    }}>
-                                        {log}
-                                    </div>
-                                ))}
-                            </div>
+                            {executionLogs.length > 0 ? (
+                                <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8rem', lineHeight: '1.6' }}>
+                                    {executionLogs.map((log, idx) => (
+                                        <div key={idx} style={{
+                                            color: log.includes('PASSED') || log.includes('SUCCESS') ? '#059669' :
+                                                log.includes('FAILED') ? '#dc2626' :
+                                                    log.includes('TOKEN USAGE') ? '#7c3aed' :
+                                                        'var(--gray-500)',
+                                            padding: '0.15rem 0',
+                                            fontWeight: log.includes('TOKEN USAGE') ? 500 : 'normal'
+                                        }}>
+                                            {log}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div style={{ color: 'var(--gray-400)', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                                    {executionType === 'replay' ? 'Executing actions directly without LLM...' : 'Waiting for LLM response...'}
+                                </div>
+                            )}
                         </div>
                     )}
 
-                    {/* Results Tab */}
+                    {/* Results Tab - Test Mode */}
                     {activeTab === 'saved' && results && (
                         <div className="results-panel">
                             <div className="results-header">
@@ -823,6 +1187,20 @@ function App() {
                                             <span className="metric-label">Actions</span>
                                         </div>
                                     )}
+                                    {/* Total Cost - only for Anthropic */}
+                                    {results.steps?.some((s: any) => s.result?.actions?.some((a: any) => a.token_usage?.provider?.toLowerCase() === 'anthropic')) && (
+                                        <div className="metric-card">
+                                            <span className="metric-value">
+                                                {calculateAnthropicCost(
+                                                    results.steps.reduce((sum: number, s: any) =>
+                                                        sum + (s.result?.actions?.reduce((aSum: number, a: any) => aSum + (a.token_usage?.input_tokens || 0), 0) || 0), 0),
+                                                    results.steps.reduce((sum: number, s: any) =>
+                                                        sum + (s.result?.actions?.reduce((aSum: number, a: any) => aSum + (a.token_usage?.output_tokens || 0), 0) || 0), 0)
+                                                )}
+                                            </span>
+                                            <span className="metric-label">Total Cost</span>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -844,14 +1222,44 @@ function App() {
                                                 <span className={`status-badge ${outcome.result.status}`} style={{ marginRight: '0.75rem' }}>
                                                     {outcome.result.status === 'passed' ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
                                                 </span>
-                                                <div className="step-result-info">
+                                                <div className="step-result-info" style={{ flex: 1 }}>
                                                     <div className="step-result-title">
                                                         Step {index + 1}: {outcome.step.test_step}
                                                     </div>
                                                     <div className="step-result-expected">
                                                         Expected: {outcome.step.expected_result}
                                                     </div>
+                                                    {outcome.step.note_to_llm && (
+                                                        <div style={{ fontSize: '0.7rem', color: 'var(--gray-500)', marginTop: '0.15rem', fontStyle: 'italic' }}>
+                                                            Note: {outcome.step.note_to_llm}
+                                                        </div>
+                                                    )}
                                                 </div>
+                                                {/* Step Token Usage Summary */}
+                                                {outcome.result.actions?.some((a: any) => a.token_usage) && (
+                                                    <div style={{
+                                                        padding: '0.25rem 0.5rem',
+                                                        background: 'rgba(0,0,0,0.05)',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.65rem',
+                                                        color: 'var(--gray-600)',
+                                                        display: 'flex',
+                                                        gap: '0.5rem',
+                                                        marginLeft: 'auto'
+                                                    }}>
+                                                        <span>
+                                                            {outcome.result.actions.reduce((sum: number, a: any) => sum + (a.token_usage?.total_tokens || 0), 0)} tokens
+                                                        </span>
+                                                        {outcome.result.actions.some((a: any) => a.token_usage?.provider?.toLowerCase() === 'anthropic') && (
+                                                            <span style={{ color: 'var(--success)', fontWeight: 500 }}>
+                                                                {calculateAnthropicCost(
+                                                                    outcome.result.actions.reduce((sum: number, a: any) => sum + (a.token_usage?.input_tokens || 0), 0),
+                                                                    outcome.result.actions.reduce((sum: number, a: any) => sum + (a.token_usage?.output_tokens || 0), 0)
+                                                                )}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {expandedSteps.has(index) && (
@@ -859,7 +1267,6 @@ function App() {
                                                     <p><strong>Status:</strong> {outcome.result.status}</p>
                                                     <p><strong>Attempts:</strong> {outcome.result.attempts}</p>
                                                     {outcome.result.reason && <p><strong>Reason:</strong> {outcome.result.reason}</p>}
-                                                    {outcome.step.note_to_llm && <p><strong>Note to LLM:</strong> {outcome.step.note_to_llm}</p>}
                                                     {outcome.result.actions?.length > 0 && (
                                                         <div style={{ marginTop: '0.75rem' }}>
                                                             {outcome.result.actions.map((actionData: any, actionIdx: number) => (
@@ -891,13 +1298,38 @@ function App() {
                                                                                 ))}
                                                                             </div>
                                                                         )}
+                                                                        {/* Token Usage */}
+                                                                        {actionData.token_usage && (
+                                                                            <div style={{
+                                                                                marginTop: '0.5rem',
+                                                                                padding: '0.35rem 0.5rem',
+                                                                                background: 'var(--gray-100)',
+                                                                                borderRadius: '4px',
+                                                                                color: 'var(--gray-600)',
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '0.75rem',
+                                                                                fontSize: '0.65rem'
+                                                                            }}>
+                                                                                <span><strong>Token Usage</strong></span>
+                                                                                <span>In: {actionData.token_usage.input_tokens}</span>
+                                                                                <span>Out: {actionData.token_usage.output_tokens}</span>
+                                                                                <span>Total: {actionData.token_usage.total_tokens}</span>
+                                                                                {actionData.token_usage.provider?.toLowerCase() === 'anthropic' && (
+                                                                                    <span style={{ color: 'var(--success)', fontWeight: 500 }}>
+                                                                                        Cost: {calculateAnthropicCost(actionData.token_usage.input_tokens, actionData.token_usage.output_tokens)}
+                                                                                    </span>
+                                                                                )}
+                                                                                <span style={{ color: 'var(--gray-400)' }}>({actionData.token_usage.provider})</span>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
 
                                                                     {/* LLM View - Filtered Elements (What AI sees) */}
                                                                     {actionData.state_before?.llm_view && (
                                                                         <details style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
                                                                             <summary style={{ cursor: 'pointer', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--primary-blue)' }}>
-                                                                                🤖 LLM View (Filtered Elements)
+                                                                                LLM View (Filtered Elements)
                                                                             </summary>
                                                                             <div style={{
                                                                                 background: 'var(--primary-blue-light)',
@@ -907,7 +1339,7 @@ function App() {
                                                                             }}>
                                                                                 <input
                                                                                     type="text"
-                                                                                    placeholder="🔍 Search in LLM view..."
+                                                                                    placeholder="Search in LLM view..."
                                                                                     style={{
                                                                                         width: '100%',
                                                                                         padding: '0.25rem 0.5rem',
@@ -951,7 +1383,7 @@ function App() {
                                                                     {actionData.state_after?.elements && actionData.state_after.elements.length > 0 && (
                                                                         <details style={{ marginTop: '0.5rem' }}>
                                                                             <summary style={{ cursor: 'pointer', fontWeight: 600, marginBottom: '0.25rem', color: 'var(--gray-700)' }}>
-                                                                                🔍 Validation Elements ({actionData.state_after.elements.length} total)
+                                                                                Validation Elements ({actionData.state_after.elements.length} total)
                                                                                 {actionData.state_after.screen && (
                                                                                     <span style={{ fontWeight: 400, fontSize: '0.7rem', marginLeft: '0.5rem', color: 'var(--gray-500)' }}>
                                                                                         Screen: {actionData.state_after.screen.w}x{actionData.state_after.screen.h}
@@ -966,7 +1398,7 @@ function App() {
                                                                             }}>
                                                                                 <input
                                                                                     type="text"
-                                                                                    placeholder="🔍 Search elements by name..."
+                                                                                    placeholder="Search elements by name..."
                                                                                     id={`element-search-${actionIdx}`}
                                                                                     style={{
                                                                                         width: '100%',
@@ -1120,8 +1552,172 @@ function App() {
                         </div>
                     )}
 
+                    {/* Results Tab - Agent Mode */}
+                    {activeTab === 'saved' && !results && agentResults && (
+                        <div className="results-panel" style={{ padding: '1.5rem' }}>
+                            <div className="results-header">
+                                <div className="results-status">
+                                    <span className={`status-badge ${agentResults.status === 'completed' ? 'passed' : 'failed'}`}>
+                                        {agentResults.status === 'completed' ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                                        {agentResults.status}
+                                    </span>
+                                    <span style={{ fontSize: '0.875rem', color: 'var(--gray-500)' }}>
+                                        {scenarioName} (Agent Mode)
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Agent Metrics */}
+                            {agentResults._meta && (
+                                <div className="metrics-grid" style={{ marginTop: '1rem' }}>
+                                    <div className="metric-card">
+                                        <span className="metric-value">{Number(agentResults._meta.duration_sec).toFixed(1)}s</span>
+                                        <span className="metric-label">Duration</span>
+                                    </div>
+                                    <div className="metric-card">
+                                        <span className="metric-value">{agentResults._meta.total_instructions}</span>
+                                        <span className="metric-label">Instructions</span>
+                                    </div>
+                                    <div className="metric-card">
+                                        <span className="metric-value" style={{ color: 'var(--success)' }}>
+                                            {agentResults._meta.executed_count}
+                                        </span>
+                                        <span className="metric-label">Executed</span>
+                                    </div>
+                                    <div className="metric-card">
+                                        <span className="metric-value" style={{ color: 'var(--error)' }}>
+                                            {agentResults._meta.failed_count}
+                                        </span>
+                                        <span className="metric-label">Failed</span>
+                                    </div>
+                                    {/* Total Cost - only for Anthropic */}
+                                    {agentResults.steps?.some(s => s.result.actions?.[0]?.token_usage?.provider?.toLowerCase() === 'anthropic') && (
+                                        <div className="metric-card">
+                                            <span className="metric-value">
+                                                {calculateAnthropicCost(
+                                                    agentResults.steps.reduce((sum, s) => sum + (s.result.actions?.[0]?.token_usage?.input_tokens || 0), 0),
+                                                    agentResults.steps.reduce((sum, s) => sum + (s.result.actions?.[0]?.token_usage?.output_tokens || 0), 0)
+                                                )}
+                                            </span>
+                                            <span className="metric-label">Total Cost</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Agent Step Outcomes */}
+                            {agentResults.steps && agentResults.steps.length > 0 && (
+                                <div style={{ marginTop: '1.5rem' }}>
+                                    <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--gray-700)' }}>
+                                        Instruction Results
+                                    </h3>
+                                    {agentResults.steps.map((step, idx) => (
+                                        <div key={idx} style={{
+                                            padding: '0.75rem 1rem',
+                                            marginBottom: '0.5rem',
+                                            background: 'white',
+                                            borderRadius: '6px',
+                                            border: '1px solid var(--gray-200)',
+                                            borderLeft: `3px solid ${step.result.status === 'executed' ? 'var(--success)' : 'var(--error)'}`
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                                {step.result.status === 'executed' ? (
+                                                    <CheckCircle2 size={16} color="var(--success)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                                ) : (
+                                                    <XCircle size={16} color="var(--error)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                                )}
+                                                <div style={{ flex: 1 }}>
+                                                    <div style={{ fontWeight: 500, fontSize: '0.8rem' }}>
+                                                        {step.instruction.instruction}
+                                                    </div>
+                                                    {step.instruction.note && (
+                                                        <div style={{ fontSize: '0.7rem', color: 'var(--gray-500)', marginTop: '0.15rem' }}>
+                                                            Note: {step.instruction.note}
+                                                        </div>
+                                                    )}
+                                                    {step.result.reason && (
+                                                        <div style={{ fontSize: '0.7rem', color: step.result.status === 'executed' ? 'var(--gray-600)' : 'var(--error)', marginTop: '0.25rem' }}>
+                                                            {step.result.reason}
+                                                        </div>
+                                                    )}
+                                                    {/* Token Usage */}
+                                                    {step.result.actions && step.result.actions.length > 0 && step.result.actions[0].token_usage && (
+                                                        <div style={{
+                                                            marginTop: '0.5rem',
+                                                            padding: '0.35rem 0.5rem',
+                                                            background: 'rgba(0,0,0,0.05)',
+                                                            borderRadius: '4px',
+                                                            fontSize: '0.65rem',
+                                                            color: 'var(--gray-600)',
+                                                            display: 'inline-flex',
+                                                            gap: '0.75rem'
+                                                        }}>
+                                                            <span><strong>Token Usage</strong> In: {step.result.actions[0].token_usage.input_tokens}</span>
+                                                            <span>Out: {step.result.actions[0].token_usage.output_tokens}</span>
+                                                            <span>Total: {step.result.actions[0].token_usage.total_tokens}</span>
+                                                            {step.result.actions[0].token_usage.provider?.toLowerCase() === 'anthropic' && (
+                                                                <span style={{ color: 'var(--success)', fontWeight: 500 }}>
+                                                                    Cost: {calculateAnthropicCost(
+                                                                        step.result.actions[0].token_usage.input_tokens,
+                                                                        step.result.actions[0].token_usage.output_tokens
+                                                                    )}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* LLM Reasoning & Actions */}
+                                                    {step.result.actions && step.result.actions.length > 0 && step.result.actions[0].plan && (
+                                                        <div style={{ marginTop: '0.5rem', fontSize: '0.7rem' }}>
+                                                            {/* Reasoning */}
+                                                            {step.result.actions[0].plan.reasoning && (
+                                                                <div style={{
+                                                                    padding: '0.4rem 0.5rem',
+                                                                    background: 'rgba(102, 126, 234, 0.1)',
+                                                                    borderRadius: '4px',
+                                                                    marginBottom: '0.35rem',
+                                                                    color: 'var(--gray-700)'
+                                                                }}>
+                                                                    <strong>Reasoning:</strong> {step.result.actions[0].plan.reasoning}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Action Steps */}
+                                                            {step.result.actions[0].plan.steps && step.result.actions[0].plan.steps.length > 0 && (
+                                                                <div style={{
+                                                                    padding: '0.4rem 0.5rem',
+                                                                    background: 'rgba(0, 0, 0, 0.03)',
+                                                                    borderRadius: '4px',
+                                                                    color: 'var(--gray-600)'
+                                                                }}>
+                                                                    <strong>Actions:</strong>
+                                                                    {step.result.actions[0].plan.steps.map((action: any, actionIdx: number) => (
+                                                                        <div key={actionIdx} style={{ marginLeft: '0.75rem', marginTop: '0.15rem' }}>
+                                                                            {actionIdx + 1}.
+                                                                            {action.type === 'click' && ` Click at (${action.target?.point?.x}, ${action.target?.point?.y})${action.target?.element_name ? ` - "${action.target.element_name}"` : ''}`}
+                                                                            {action.type === 'type' && ` Type "${action.text}"`}
+                                                                            {action.type === 'wait' && ` Wait ${action.ms}ms`}
+                                                                            {action.type === 'key_combo' && ` Key: ${action.combo?.join('+')}`}
+                                                                            {action.type === 'scroll' && ` Scroll ${action.delta && action.delta > 0 ? 'up' : 'down'} (${action.delta})${action.at ? ` at (${action.at.x}, ${action.at.y})` : ''}`}
+                                                                            {action.type === 'drag' && ` Drag from (${action.from?.x}, ${action.from?.y}) to (${action.to?.x}, ${action.to?.y})`}
+                                                                            {!['click', 'type', 'wait', 'key_combo', 'scroll', 'drag'].includes(action.type) && ` ${action.type}`}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Empty Results State */}
-                    {activeTab === 'saved' && !results && (
+                    {activeTab === 'saved' && !results && !agentResults && (
                         <div className="panel">
                             <div className="empty-state">
                                 <Zap size={48} />
@@ -1130,7 +1726,132 @@ function App() {
                         </div>
                     )}
                 </div>
-            </main>
+            </main >
+
+            {/* Settings Modal */}
+            {
+                showSettings && (
+                    <div className="modal-overlay" onClick={() => setShowSettings(false)}>
+                        <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+                            <div className="modal-header">
+                                <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <Settings size={20} /> LLM Settings
+                                </h2>
+                                <button className="btn btn-ghost btn-sm" onClick={() => setShowSettings(false)}>✕</button>
+                            </div>
+                            <div className="modal-content" style={{ padding: '1.5rem' }}>
+                                {/* Provider */}
+                                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                                    <label className="form-label">Provider</label>
+                                    <select
+                                        className="form-input"
+                                        value={settingsForm.provider}
+                                        onChange={(e) => {
+                                            const newProvider = e.target.value;
+                                            // For "local" provider, auto-fill both URL and model
+                                            if (newProvider === 'local') {
+                                                setSettingsForm({
+                                                    ...settingsForm,
+                                                    provider: newProvider,
+                                                    base_url: 'http://localhost:11434',
+                                                    model: 'qwen2.5:7b-instruct-q6_k'
+                                                });
+                                            } else {
+                                                setSettingsForm({
+                                                    ...settingsForm,
+                                                    provider: newProvider,
+                                                    base_url: getDefaultUrl(newProvider)
+                                                });
+                                            }
+                                        }}
+                                    >
+                                        {providers.map((p) => (
+                                            <option key={p.id} value={p.id}>{p.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Base URL */}
+                                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                                    <label className="form-label">Base URL</label>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        placeholder="http://localhost:11434"
+                                        value={settingsForm.base_url}
+                                        onChange={(e) => setSettingsForm({ ...settingsForm, base_url: e.target.value })}
+                                    />
+                                </div>
+
+                                {/* API Key */}
+                                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                                    <label className="form-label">
+                                        API Key
+                                        {providers.find(p => p.id === settingsForm.provider)?.requires_key &&
+                                            <span style={{ color: 'var(--red-500)', marginLeft: '0.25rem' }}>*</span>
+                                        }
+                                    </label>
+                                    <input
+                                        type="password"
+                                        className="form-input"
+                                        placeholder="Enter API key (leave empty to keep existing)"
+                                        value={settingsForm.api_key}
+                                        onChange={(e) => setSettingsForm({ ...settingsForm, api_key: e.target.value })}
+                                    />
+                                    <small style={{ color: 'var(--gray-500)', fontSize: '0.75rem' }}>
+                                        API keys are encrypted before storage
+                                    </small>
+                                </div>
+
+                                {/* Model */}
+                                <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                                    <label className="form-label">Model Name</label>
+                                    <input
+                                        type="text"
+                                        className="form-input"
+                                        placeholder="e.g., mistral-small3.2:latest"
+                                        value={settingsForm.model}
+                                        onChange={(e) => setSettingsForm({ ...settingsForm, model: e.target.value })}
+                                    />
+                                </div>
+
+                                {/* Test Result */}
+                                {settingsTestResult && (
+                                    <div style={{
+                                        padding: '0.75rem',
+                                        marginBottom: '1rem',
+                                        borderRadius: '6px',
+                                        background: settingsTestResult.success ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                        border: `1px solid ${settingsTestResult.success ? 'var(--green-500)' : 'var(--red-500)'}`,
+                                        color: settingsTestResult.success ? 'var(--green-700)' : 'var(--red-700)',
+                                        fontSize: '0.875rem'
+                                    }}>
+                                        {settingsTestResult.success ? 'Success:' : 'Error:'} {settingsTestResult.message}
+                                    </div>
+                                )}
+
+                                {/* Actions */}
+                                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={testConnection}
+                                        disabled={settingsTesting}
+                                    >
+                                        {settingsTesting ? 'Testing...' : 'Test Connection'}
+                                    </button>
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={saveSettings}
+                                        disabled={settingsSaving}
+                                    >
+                                        {settingsSaving ? 'Saving...' : 'Save Settings'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
         </div >
     );
 }

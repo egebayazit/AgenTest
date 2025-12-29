@@ -7,16 +7,18 @@ ollama serve
 
 # --- 1) llm_service ---
 Start-Process powershell -ArgumentList " -NoExit -Command `
-cd '$env:USERPROFILE\Desktop\AgenTest\agent-llm'; `
+& 'C:\Users\hazal\anaconda3\shell\condabin\conda-hook.ps1'; `
 conda activate base; `
+cd '$env:USERPROFILE\Desktop\AgenTest\agent-llm'; `
 uvicorn llm_service:app --host 0.0.0.0 --port 18888 --reload
 "
 
 # --- 2) controller_service ---
 Start-Process powershell -ArgumentList " -NoExit -Command `
-cd '$env:USERPROFILE\Desktop\AgenTest\agent-controller'; `
+& 'C:\Users\hazal\anaconda3\shell\condabin\conda-hook.ps1'; `
 conda activate base; `
-`$env:SUT_STATE_URL='http://192.168.137.249:18080/state'; `
+cd '$env:USERPROFILE\Desktop\AgenTest\agent-controller'; `
+`$env:SUT_STATE_URL='http://192.168.137.52:18080/state'; `
 uvicorn controller_service:app --host 0.0.0.0 --port 18800 --reload
 "
 

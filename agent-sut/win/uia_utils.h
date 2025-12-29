@@ -38,9 +38,10 @@ struct UiaPatterns {
 struct UiaElem {
   // Identity & Classification
   std::wstring name;
-  std::wstring automationId;
+  std::wstring automationId; // EKLENDİ: Otomasyon Kimliği
   std::wstring className;
   std::wstring controlType;
+  std::wstring value;        // EKLENDİ: Input/Edit alanlarındaki metin değeri
   
   // Position & Visibility
   RECT rect{};              // Bounding rectangle (screen coordinates)
@@ -55,30 +56,23 @@ struct UiaElem {
   // Interaction Patterns
   UiaPatterns patterns{};
   
-  // Hierarchical Path (root → ... → this node, max 6 levels)
+  // Hierarchical Path (root → ... → this node)
   std::vector<std::wstring> path;
 };
 
 // Main UI Automation Session Manager
-// Supports: Qt, WPF, WinForms, MFC, Electron, Win32 native controls
 class UiaSession {
 public:
   UiaSession();
   ~UiaSession();
   
-  // Full snapshot of all UI elements (unfiltered)
-  // Use for comprehensive analysis or debugging
-  // @param max_elems: Maximum number of elements to retrieve
-  // @return Vector of all UI elements found
+  // Full snapshot (Geriye dönük uyumluluk için, genelde kullanılmaz)
   std::vector<UiaElem> snapshot(int max_elems = 500) const;
   
   // Filtered snapshot optimized for UI automation
   // - Filters offscreen/oversized elements
-  // - Focus on foreground window and owned windows
+  // - Focus on foreground window
   // - Deep scans containers (panels, dialogs, tabs)
-  // - Framework-adaptive scanning (Qt, WPF, WinForms, etc.)
-  // @param max_elems: Maximum number of elements to retrieve
-  // @return Vector of relevant UI elements for interaction
   std::vector<UiaElem> snapshot_filtered(int max_elems = 500) const;
 
   // Screen dimensions (primary monitor)
@@ -89,9 +83,5 @@ private:
   IUIAutomation* uia_ = nullptr;
 };
 
-// Convert UIA ControlType ID to human-readable string
-// Supports all standard UIA control types:
-// Button, Edit, Text, CheckBox, ComboBox, MenuItem, ListItem,
-// Window, TabItem, Hyperlink, Pane, Group, List, Table, DataGrid,
-// Tree, TreeItem, Document, ToolBar, MenuBar, Menu, etc.
+// Helper: Convert UIA ControlType ID to string
 std::wstring ControlTypeToString(long ctl);

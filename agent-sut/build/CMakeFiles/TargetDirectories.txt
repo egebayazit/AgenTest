@@ -1,5 +1,0 @@
-C:/Users/hazal/Desktop/AgenTest/agent-sut/build/CMakeFiles/jvm_agent_jar.dir
-C:/Users/hazal/Desktop/AgenTest/agent-sut/build/CMakeFiles/jvm_runtime_zip.dir
-C:/Users/hazal/Desktop/AgenTest/agent-sut/build/CMakeFiles/agent_sut.dir
-C:/Users/hazal/Desktop/AgenTest/agent-sut/build/CMakeFiles/ALL_BUILD.dir
-C:/Users/hazal/Desktop/AgenTest/agent-sut/build/CMakeFiles/ZERO_CHECK.dir

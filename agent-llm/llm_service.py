@@ -32,7 +32,21 @@ from llm_backend import (
     ScenarioStepOutcome,
     LLAMACPP_AVAILABLE,
     ANTHROPIC_AVAILABLE,
+    GEMINI_AVAILABLE,
 )
+
+# Agent Mode Backend
+from agent_mode_backend import (
+    AgentModeBackend,
+    AgentInstruction,
+    AgentStepResult,
+    AgentScenarioResult,
+    AgentScenarioOutcome,
+    AgentActionLog,
+)
+
+# Settings Manager
+from settings_manager import get_settings_manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,12 +54,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("llm_service")
 
-# Debug: Show provider availability on startup
-logger.info("=" * 60)
-logger.info("PROVIDER AVAILABILITY CHECK")
-logger.info("  LLAMACPP_AVAILABLE: %s", LLAMACPP_AVAILABLE)
-logger.info("  ANTHROPIC_AVAILABLE: %s", ANTHROPIC_AVAILABLE)
-logger.info("=" * 60)
 
 # ============================================================================
 # PYDANTIC MODELS
@@ -111,6 +119,44 @@ class HealthOut(BaseModel):
     timestamp: float
 
 
+class LLMSettingsIn(BaseModel):
+    """Input model for LLM settings"""
+    provider: str = Field(..., description="LLM provider (ollama, openrouter, anthropic, gemini, custom)")
+    base_url: str = Field("", description="Base URL for the LLM API")
+    api_key: Optional[str] = Field(None, description="API key (will be encrypted)")
+    model: str = Field(..., description="Model name")
+
+
+# ============================================================================
+# AGENT MODE PYDANTIC MODELS
+# ============================================================================
+
+class AgentStepIn(BaseModel):
+    """Input model for a single agent instruction - no expected result"""
+    instruction: str = Field(..., description="What the agent should do", min_length=1)
+    note: Optional[str] = Field(None, description="Additional notes/hints for the agent")
+
+    @field_validator('instruction')
+    def must_not_be_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError('must not be empty')
+        return v.strip()
+
+
+class AgentRunIn(BaseModel):
+    """Input model for agent mode scenario run"""
+    scenario_name: str = Field("Untitled_Agent_Task", description="Name of the agent task")
+    instructions: List[AgentStepIn] = Field(..., min_items=1, description="List of instructions to execute")
+    temperature: float = Field(0.1, ge=0.0, le=1.0, description="LLM temperature (default: 0.1)")
+    use_ods: bool = Field(False, description="Use ODS instead of WinDriver for element detection")
+
+    @field_validator('instructions')
+    def validate_instructions(cls, v):
+        if not v:
+            raise ValueError('instructions must contain at least one item')
+        return v
+
+
 # ============================================================================
 # FASTAPI APP
 # ============================================================================
@@ -139,14 +185,14 @@ execution_cancelled = False
 class UILogHandler(logging.Handler):
     """Captures logs with emojis for UI display."""
     
-    # Only capture logs that start with these emojis (simplified UI logs)
-    UI_EMOJIS = ('🎬', '📍', '🔄', '🚀', '📤', '🎯', '⚡', '🔍', '✅', '❌', '✓', '💾')
+    # Only capture logs that start with these prefixes (simplified UI logs)
+    UI_PREFIXES = ('STARTING', 'STEP', 'Attempt', 'PRE-CHECK', 'SENDING', 'PARSED', 'EXECUTING', 'VALIDATION', 'PASSED', 'FAILED', 'STOPPED', 'Planning failed', 'Action failed', 'TOKEN USAGE')
     
     def emit(self, record):
         msg = self.format(record)
-        # Only add to UI logs if it starts with a relevant emoji
-        for emoji in self.UI_EMOJIS:
-            if emoji in msg:
+        # Only add to UI logs if it contains a relevant prefix
+        for prefix in self.UI_PREFIXES:
+            if prefix in msg:
                 ui_logs.append(msg)
                 break
 
@@ -154,6 +200,9 @@ class UILogHandler(logging.Handler):
 ui_handler = UILogHandler()
 ui_handler.setFormatter(logging.Formatter('%(message)s'))
 logging.getLogger("llm_backend").addHandler(ui_handler)
+
+# Add UI handler to agent_mode_backend logger (for Agent Mode)
+logging.getLogger("agent_mode_backend").addHandler(ui_handler)
 
 # ============================================================================
 # BACKEND CREATION
@@ -166,24 +215,29 @@ def _mk_backend(
     """
     Create LLM backend with optional configuration overrides.
     
-    Required environment variables:
-      - LLM_PROVIDER ("ollama", "lmstudio", "openrouter", or "llamacpp")
+    Configuration priority:
+      1. Runtime overrides (model_override, config)
+      2. Settings from ~/.agentest/llm_settings.json
+      3. Environment variables (.env)
+      
+    Required environment variables (if settings not configured):
+      - LLM_PROVIDER ("ollama", "lmstudio", "openrouter", "custom", or "llamacpp")
       - LLM_MODEL (model name or path to .gguf file for llamacpp)
       - LLM_BASE_URL (for Ollama, default: http://localhost:11434)
       - LLM_API_KEY (for OpenRouter only, optional for LM Studio)
       - SUT_STATE_URL_WINDRIVER
       - SUT_STATE_URL_ODS
       - SUT_ACTION_URL
-      
-    Optional for llamacpp:
-      - LLAMACPP_N_CTX (context window size, default: 4096)
-      - LLAMACPP_N_GPU_LAYERS (GPU layers to offload, default: 0 = CPU only)
     """
-    # Get provider from env
-    provider = os.getenv("LLM_PROVIDER", "ollama")
+    # Try to get settings from settings manager first
+    settings_manager = get_settings_manager()
+    saved_settings = settings_manager.get_settings(include_raw_key=True)
     
-    # Model (override or env)
-    model = model_override or os.getenv("LLM_MODEL", "mistral-small3.2:latest")
+    # Priority: override > settings > env
+    provider = saved_settings.get("provider") or os.getenv("LLM_PROVIDER", "ollama")
+    model = model_override or saved_settings.get("model") or os.getenv("LLM_MODEL", "qwen2.5:7b-instruct-q6_k")
+    base_url = saved_settings.get("base_url") or ""
+    api_key = saved_settings.get("api_key") or ""
     
     # Base parameters
     params = {
@@ -192,21 +246,28 @@ def _mk_backend(
     }
     
     # Provider-specific config
-    if provider == "ollama":
-        params["llm_base_url"] = os.getenv("LLM_BASE_URL", "http://localhost:11434")
+    if provider == "local":
+        # Local provider: uses Ollama API with fixed Qwen model and LOCAL_SYSTEM_PROMPT
+        params["llm_base_url"] = base_url or os.getenv("LLM_BASE_URL", "http://localhost:11434")
+        params["llm_api_key"] = None  # Local doesn't need API key
+        params["llm_model"] = "qwen2.5:7b-instruct-q6_k"  # Fixed model for local
+        logger.info("Using Local provider (Qwen): %s @ %s", params["llm_model"], params["llm_base_url"])
+    
+    elif provider == "ollama":
+        params["llm_base_url"] = base_url or os.getenv("LLM_BASE_URL", "http://localhost:11434")
         params["llm_api_key"] = None  # Ollama doesn't need API key
         logger.info("Using Ollama provider: %s @ %s", model, params["llm_base_url"])
     
     elif provider == "lmstudio":
-        params["llm_base_url"] = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1")
-        params["llm_api_key"] = os.getenv("LLM_API_KEY")  # Optional for LM Studio
+        params["llm_base_url"] = base_url or os.getenv("LLM_BASE_URL", "http://localhost:1234/v1")
+        params["llm_api_key"] = api_key or os.getenv("LLM_API_KEY")  # Optional for LM Studio
         logger.info("Using LM Studio provider: %s @ %s", model, params["llm_base_url"])
 
     elif provider == "openrouter":
-        api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENROUTER_API_KEY")
-        if not api_key:
+        final_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+        if not final_key:
             raise ValueError("LLM_API_KEY required for OpenRouter provider")
-        params["llm_api_key"] = api_key
+        params["llm_api_key"] = final_key
         params["llm_base_url"] = "https://openrouter.ai/api/v1"
         logger.info("Using OpenRouter provider: %s", model)
     
@@ -227,17 +288,33 @@ def _mk_backend(
         logger.info("  GPU layers: %d", params["llamacpp_n_gpu_layers"])
 
     elif provider == "openai":
-        params["llm_base_url"] = os.getenv("LLM_BASE_URL", "http://localhost:8090/v1")
-        params["llm_api_key"] = os.getenv("LLM_API_KEY")  # Optional (dummy for llama-server)
+        params["llm_base_url"] = base_url or os.getenv("LLM_BASE_URL", "http://localhost:8090/v1")
+        params["llm_api_key"] = api_key or os.getenv("LLM_API_KEY")  # Optional (dummy for llama-server)
         logger.info("Using OpenAI-compatible provider: %s @ %s", model, params["llm_base_url"])
 
     elif provider == "anthropic":
-        api_key = os.getenv("LLM_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
+        final_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+        if not final_key:
             raise ValueError("LLM_API_KEY required for Anthropic provider")
-        params["llm_api_key"] = api_key
+        params["llm_api_key"] = final_key
         params["llm_base_url"] = ""  # Not used for Anthropic
         logger.info("Using Anthropic provider: %s", model)
+
+    elif provider == "gemini":
+        final_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if not final_key:
+            raise ValueError("LLM_API_KEY required for Gemini provider")
+        params["llm_api_key"] = final_key
+        params["llm_base_url"] = ""  # Not used for Gemini
+        logger.info("Using Gemini provider: %s", model)
+
+    elif provider == "custom":
+        # Custom OpenAI-compatible provider
+        if not base_url:
+            raise ValueError("Base URL required for Custom provider. Set it in Settings or LLM_BASE_URL env var.")
+        params["llm_base_url"] = base_url
+        params["llm_api_key"] = api_key or os.getenv("LLM_API_KEY")
+        logger.info("Using Custom (OpenAI-compatible) provider: %s @ %s", model, params["llm_base_url"])
 
     else:
         raise ValueError(f"Unknown LLM_PROVIDER: {provider}")
@@ -263,7 +340,7 @@ def _mk_raw_backend(
     """
     # Mevcut _mk_backend mantığının aynısını kullanıyoruz, sadece sınıf farklı
     provider = os.getenv("LLM_PROVIDER", "ollama")
-    model = model_override or os.getenv("LLM_MODEL", "mistral-small3.2:latest")
+    model = model_override or os.getenv("LLM_MODEL", "qwen2.5:7b-instruct-q6_k")
     
     params = {
         "llm_provider": provider,
@@ -288,6 +365,12 @@ def _mk_raw_backend(
     elif provider == "openai":
         params["llm_base_url"] = os.getenv("LLM_BASE_URL", "http://localhost:8090/v1")
         params["llm_api_key"] = os.getenv("LLM_API_KEY")
+    elif provider == "gemini":
+        params["llm_api_key"] = os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY")
+        params["llm_base_url"] = ""
+    elif provider == "anthropic":
+        params["llm_api_key"] = os.getenv("LLM_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+        params["llm_base_url"] = ""
 
     # Config override
     if config:
@@ -296,6 +379,87 @@ def _mk_raw_backend(
     
     # RawODSBackend döndür
     return RawODSBackend.from_env(**params)
+
+
+def _mk_agent_backend(
+    model_override: Optional[str] = None,
+) -> AgentModeBackend:
+    """
+    Creates an AgentModeBackend instance for Agent Mode.
+    No semantic filtering, no pre-check, no expected result validation.
+    """
+    # Try to get settings from settings manager first
+    settings_manager = get_settings_manager()
+    saved_settings = settings_manager.get_settings(include_raw_key=True)
+    
+    # Priority: override > settings > env
+    provider = saved_settings.get("provider") or os.getenv("LLM_PROVIDER", "ollama")
+    model = model_override or saved_settings.get("model") or os.getenv("LLM_MODEL", "qwen2.5:7b-instruct-q6_k")
+    base_url = saved_settings.get("base_url") or ""
+    api_key = saved_settings.get("api_key") or ""
+    
+    params = {
+        "llm_provider": provider,
+        "llm_model": model,
+    }
+    
+    # Provider-specific config (same as _mk_backend)
+    if provider == "local":
+        params["llm_base_url"] = base_url or os.getenv("LLM_BASE_URL", "http://localhost:11434")
+        params["llm_api_key"] = None
+        params["llm_model"] = "qwen2.5:7b-instruct-q6_k"
+        logger.info("Agent Mode: Using Local provider (Qwen): %s", params["llm_model"])
+    
+    elif provider == "ollama":
+        params["llm_base_url"] = base_url or os.getenv("LLM_BASE_URL", "http://localhost:11434")
+        params["llm_api_key"] = None
+        logger.info("Agent Mode: Using Ollama provider: %s", model)
+    
+    elif provider == "lmstudio":
+        params["llm_base_url"] = base_url or os.getenv("LLM_BASE_URL", "http://localhost:1234/v1")
+        params["llm_api_key"] = api_key or os.getenv("LLM_API_KEY")
+        logger.info("Agent Mode: Using LM Studio provider: %s", model)
+
+    elif provider == "openrouter":
+        final_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+        if not final_key:
+            raise ValueError("LLM_API_KEY required for OpenRouter provider")
+        params["llm_api_key"] = final_key
+        params["llm_base_url"] = "https://openrouter.ai/api/v1"
+        logger.info("Agent Mode: Using OpenRouter provider: %s", model)
+    
+    elif provider == "anthropic":
+        final_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+        if not final_key:
+            raise ValueError("LLM_API_KEY required for Anthropic provider")
+        params["llm_api_key"] = final_key
+        params["llm_base_url"] = ""
+        logger.info("Agent Mode: Using Anthropic provider: %s", model)
+
+    elif provider == "gemini":
+        final_key = api_key or os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if not final_key:
+            raise ValueError("LLM_API_KEY required for Gemini provider")
+        params["llm_api_key"] = final_key
+        params["llm_base_url"] = ""
+        logger.info("Agent Mode: Using Gemini provider: %s", model)
+
+    elif provider == "openai":
+        params["llm_base_url"] = base_url or os.getenv("LLM_BASE_URL", "http://localhost:8090/v1")
+        params["llm_api_key"] = api_key or os.getenv("LLM_API_KEY")
+        logger.info("Agent Mode: Using OpenAI-compatible provider: %s", model)
+
+    elif provider == "custom":
+        if not base_url:
+            raise ValueError("Base URL required for Custom provider.")
+        params["llm_base_url"] = base_url
+        params["llm_api_key"] = api_key or os.getenv("LLM_API_KEY")
+        logger.info("Agent Mode: Using Custom provider: %s", model)
+
+    else:
+        raise ValueError(f"Unknown LLM_PROVIDER: {provider}")
+    
+    return AgentModeBackend.from_env(**params)
 
 
 # ============================================================================
@@ -489,8 +653,57 @@ async def stop_execution() -> Dict[str, Any]:
     """Stop the currently running test execution"""
     global execution_cancelled
     execution_cancelled = True
-    logger.info("🛑 Stop requested by user")
+    logger.info("Stop requested by user")
     return {"status": "ok", "message": "Stop requested"}
+
+
+# ============================================================================
+# SETTINGS ENDPOINTS
+# ============================================================================
+
+@app.get("/settings")
+async def get_settings() -> Dict[str, Any]:
+    """Get current LLM settings (API keys are masked)"""
+    settings_manager = get_settings_manager()
+    settings = settings_manager.get_settings(include_raw_key=False)
+    return {
+        "status": "ok",
+        "settings": settings
+    }
+
+
+@app.post("/settings")
+async def save_settings(body: LLMSettingsIn) -> Dict[str, Any]:
+    """Save LLM settings (API key will be encrypted)"""
+    settings_manager = get_settings_manager()
+    success = settings_manager.save_settings(body.model_dump())
+    if success:
+        logger.info("LLM settings updated: provider=%s, model=%s", body.provider, body.model)
+        return {"status": "ok", "message": "Settings saved successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to save settings")
+
+
+@app.post("/settings/test")
+async def test_llm_connection() -> Dict[str, Any]:
+    """Test LLM connection with current settings"""
+    settings_manager = get_settings_manager()
+    success, message = settings_manager.test_connection()
+    return {
+        "status": "ok" if success else "error",
+        "success": success,
+        "message": message
+    }
+
+
+@app.get("/settings/providers")
+async def get_providers() -> Dict[str, Any]:
+    """Get list of available LLM providers"""
+    settings_manager = get_settings_manager()
+    return {
+        "status": "ok",
+        "providers": settings_manager.get_providers()
+    }
 
 
 @app.get("/config", response_model=ConfigOut)
@@ -498,11 +711,14 @@ async def get_config() -> ConfigOut:
     """Get current configuration"""
     state_url_windriver = os.getenv("SUT_STATE_URL_WINDRIVER", "http://127.0.0.1:18800/state/for-llm")
     state_url_ods = os.getenv("SUT_STATE_URL_ODS", "http://127.0.0.1:18800/state/from-ods")
-    action_url = os.getenv("SUT_ACTION_URL", "http://192.168.137.249:18080/action")
+    action_url = os.getenv("SUT_ACTION_URL", "http://192.168.137.52:18080/action")
     
-    # LLM config
-    provider = os.getenv("LLM_PROVIDER", "ollama")
-    model = os.getenv("LLM_MODEL", "mistral-small3.2:latest")
+    # LLM config - read from settings first, then env
+    settings_manager = get_settings_manager()
+    saved_settings = settings_manager.get_settings(include_raw_key=False)
+    
+    provider = saved_settings.get("provider") or os.getenv("LLM_PROVIDER", "ollama")
+    model = saved_settings.get("model") or os.getenv("LLM_MODEL", "qwen2.5:7b-instruct-q6_k")
     
     enforce = os.getenv("ENFORCE_JSON_RESPONSE", "1") not in ("0", "false", "False")
     
@@ -543,10 +759,10 @@ async def run_scenario(body: RunIn) -> Dict[str, Any]:
     provider = os.getenv("LLM_PROVIDER", "ollama")
     
     # Provider validation
-    if provider not in ("ollama", "lmstudio", "openrouter", "llamacpp", "openai", "anthropic"):
+    if provider not in ("local", "ollama", "lmstudio", "openrouter", "llamacpp", "openai", "anthropic", "gemini", "custom"):
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid LLM_PROVIDER: {provider}. Must be 'ollama', 'lmstudio', 'openrouter', 'llamacpp', 'openai', or 'anthropic'."
+            detail=f"Invalid LLM_PROVIDER: {provider}. Must be 'local', 'ollama', 'lmstudio', 'openrouter', 'llamacpp', 'openai', 'anthropic', 'gemini', or 'custom'."
         )
         
     # API key validation (for OpenRouter and Anthropic)
@@ -569,6 +785,19 @@ async def run_scenario(body: RunIn) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=500,
                 detail="anthropic package not installed. Install with: pip install anthropic"
+            )
+    
+    if provider == "gemini":
+        api_key = os.getenv("LLM_API_KEY") or os.getenv("GEMINI_API_KEY", "")
+        if not api_key:
+            raise HTTPException(
+                status_code=500,
+                detail="LLM_API_KEY missing in environment for Gemini provider."
+            )
+        if not GEMINI_AVAILABLE:
+            raise HTTPException(
+                status_code=500,
+                detail="google-genai package not installed. Install with: pip install google-genai"
             )
     
     # llamacpp availability check
@@ -697,7 +926,7 @@ async def run_scenario_raw(body: RunIn) -> Dict[str, Any]:
     
     # Log start
     logger.info("=" * 80)
-    logger.info("🚀 SCENARIO START -- RAW ODS MODE (UNOPTIMIZED)")
+    logger.info("SCENARIO START -- RAW ODS MODE (UNOPTIMIZED)")
     logger.info("   WARNING: This mode is for demonstration only.")
     logger.info("   It sends unfiltered ODS data directly to LLM.")
     logger.info("=" * 80)
@@ -737,6 +966,223 @@ async def run_scenario_raw(body: RunIn) -> Dict[str, Any]:
     
     return payload
 
+
+# ============================================================================
+# AGENT MODE ENDPOINT
+# ============================================================================
+
+@app.post("/run-agent")
+async def run_agent_scenario(body: AgentRunIn) -> Dict[str, Any]:
+    """
+    Execute instructions in Agent Mode.
+    
+    Agent Mode is a simplified execution mode:
+    - No semantic filtering
+    - No pre-check
+    - No expected result validation
+    - Just execute instructions and report
+    """
+    # Get current settings for provider info
+    settings_manager = get_settings_manager()
+    saved_settings = settings_manager.get_settings(include_raw_key=True)
+    provider = saved_settings.get("provider") or os.getenv("LLM_PROVIDER", "ollama")
+    
+    # Provider validation
+    if provider not in ("local", "ollama", "lmstudio", "openrouter", "anthropic", "gemini", "openai", "custom"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid LLM_PROVIDER: {provider}. Must be 'local', 'ollama', 'lmstudio', 'openrouter', 'anthropic', 'gemini', 'openai', or 'custom'."
+        )
+    
+    # API key validation for providers that require it
+    if provider == "anthropic":
+        if not ANTHROPIC_AVAILABLE:
+            raise HTTPException(
+                status_code=500,
+                detail="anthropic package not installed. Install with: pip install anthropic"
+            )
+    
+    if provider == "gemini":
+        if not GEMINI_AVAILABLE:
+            raise HTTPException(
+                status_code=500,
+                detail="google-genai package not installed. Install with: pip install google-genai"
+            )
+    
+    # Create agent backend
+    try:
+        backend = _mk_agent_backend()
+    except ValueError as e:
+        logger.error("Agent backend configuration error: %s", e)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid backend configuration: {str(e)}"
+        )
+    except Exception as e:
+        logger.exception("Failed to create agent backend")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Agent backend initialization failed: {str(e)}"
+        )
+    
+    # Convert to AgentInstruction
+    instructions = [
+        AgentInstruction(
+            instruction=s.instruction,
+            note=s.note,
+        )
+        for s in body.instructions
+    ]
+    
+    # Clear previous UI logs
+    ui_logs.clear()
+    
+    # Reset cancellation flag
+    global execution_cancelled
+    execution_cancelled = False
+    
+    # Cancel check callback
+    def check_cancelled():
+        return execution_cancelled
+    
+    # Log start
+    logger.info("=" * 80)
+    logger.info("AGENT MODE SCENARIO START: %s", body.scenario_name)
+    logger.info("  Instructions: %d", len(instructions))
+    logger.info("  Use ODS: %s", body.use_ods)
+    logger.info("  Provider: %s", provider)
+    logger.info("=" * 80)
+    
+    # Execute scenario
+    started = time.time()
+    try:
+        result = await backend.run_scenario(
+            scenario_name=body.scenario_name,
+            instructions=instructions,
+            temperature=body.temperature,
+            use_ods=body.use_ods,
+            cancel_check=check_cancelled
+        )
+    except Exception as e:
+        logger.exception("Agent mode execution error")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Agent execution error: {str(e)}"
+        )
+    
+    duration = time.time() - started
+    
+    # Log completion
+    logger.info("=" * 80)
+    logger.info("AGENT MODE SCENARIO COMPLETE")
+    logger.info("  Status: %s", result.status)
+    logger.info("  Duration: %.2f seconds", duration)
+    logger.info("  Instructions executed: %d", len(result.steps))
+    logger.info("=" * 80)
+    
+    # Build response - convert dataclass to dict
+    def action_to_dict(action):
+        return {
+            "action_id": action.action_id,
+            "plan": action.plan,
+            "ack": action.ack,
+            "state_before": action.state_before,
+            "state_after": action.state_after,
+            "timestamp": action.timestamp,
+            "token_usage": action.token_usage,
+        }
+    
+    def step_result_to_dict(step_result):
+        return {
+            "status": step_result.status,
+            "actions": [action_to_dict(a) for a in step_result.actions],
+            "final_state": step_result.final_state,
+            "last_plan": step_result.last_plan,
+            "reason": step_result.reason,
+        }
+    
+    def outcome_to_dict(outcome):
+        return {
+            "instruction": {
+                "instruction": outcome.instruction.instruction,
+                "note": outcome.instruction.note,
+            },
+            "result": step_result_to_dict(outcome.result),
+        }
+    
+    payload = {
+        "status": result.status,
+        "steps": [outcome_to_dict(o) for o in result.steps],
+        "final_state": result.final_state,
+        "reason": result.reason,
+        "_meta": {
+            "mode": "agent",
+            "duration_sec": round(duration, 2),
+            "total_instructions": len(result.steps),
+            "executed_count": sum(1 for s in result.steps if s.result.status == "executed"),
+            "failed_count": sum(1 for s in result.steps if s.result.status == "failed"),
+            "provider": provider,
+            "use_ods": body.use_ods,
+        }
+    }
+    
+    # Save agent test to saved_tests directory
+    try:
+        import re
+        safe_name = re.sub(r'[^\w\-_\. ]', '', body.scenario_name).replace(' ', '_')
+        filename = f"{safe_name}.json"
+        directory = "saved_tests"
+        
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        
+        filepath = os.path.join(directory, filename)
+        
+        # Build merged steps from all actions for replay
+        merged_steps = []
+        for outcome in result.steps:
+            for action in outcome.result.actions:
+                if action.plan and action.plan.get("steps"):
+                    merged_steps.extend(action.plan["steps"])
+                    # Add wait between instructions for replay safety
+                    merged_steps.append({"type": "wait", "ms": 1000})
+        
+        # Remove trailing wait
+        if merged_steps and merged_steps[-1].get("type") == "wait":
+            merged_steps.pop()
+        
+        # Build step definitions for Agent Mode (instruction-based)
+        step_definitions = [
+            {
+                "test_step": s.instruction,
+                "expected_result": "(Agent Mode - no expected result)",
+                "note_to_llm": s.note
+            }
+            for s in body.instructions
+        ]
+        
+        # Final payload for saving
+        save_payload = {
+            "action_id": f"replay_{safe_name}_{int(time.time())}",
+            "coords_space": "physical",
+            "steps": merged_steps,
+            "step_definitions": step_definitions,
+            "execution_result": payload["steps"],
+            "execution_duration": duration,
+            "mode": "agent",  # Mark as agent mode test
+            "use_ods": body.use_ods
+        }
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(save_payload, f, indent=2, ensure_ascii=False)
+        
+        logger.info("AGENT TEST SAVED: %s", filepath)
+    except Exception as e:
+        logger.error("Failed to save agent test: %s", e)
+    
+    return payload
+
+
 @app.post("/run-saved-test")
 async def run_saved_test(body: ReplayIn) -> Dict[str, Any]:
     """
@@ -772,7 +1218,7 @@ async def run_saved_test(body: ReplayIn) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="Invalid test file format: missing 'steps'")
 
     # 4. Action Endpoint'e Gönder
-    action_url = os.getenv("SUT_ACTION_URL", "http://192.168.137.249:18080/action")
+    action_url = os.getenv("SUT_ACTION_URL", "http://192.168.137.52:18080/action")
     
     logger.info("=" * 80)
     logger.info("↺ REPLAYING SAVED TEST: %s", safe_name)
@@ -843,7 +1289,8 @@ async def list_saved_tests() -> Dict[str, Any]:
                 "filename": filename,
                 "steps_count": len(data.get("steps", [])),
                 "action_id": data.get("action_id", ""),
-                "modified_at": os.path.getmtime(filepath)
+                "modified_at": os.path.getmtime(filepath),
+                "mode": data.get("mode", "test")  # "test" or "agent"
             })
         except Exception as e:
             logger.warning("Failed to read test file %s: %s", filepath, e)
@@ -880,7 +1327,7 @@ async def delete_saved_test(test_name: str) -> Dict[str, Any]:
     
     try:
         os.remove(filepath)
-        logger.info("🗑️ Deleted test: %s", safe_name)
+        logger.info("Deleted test: %s", safe_name)
         return {"status": "ok", "deleted": safe_name}
     except Exception as e:
         logger.error("Failed to delete test: %s", e)
@@ -988,18 +1435,18 @@ if __name__ == "__main__":
         base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1")
         logger.info("  LM Studio URL: %s", base_url)
         api_key = os.getenv("LLM_API_KEY", "")
-        logger.info("  API Key: %s", "✓ SET" if api_key else "✗ NOT SET (optional)")
+        logger.info("  API Key: %s", "SET" if api_key else "NOT SET (optional)")
 
     elif provider == "openrouter":
         api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENROUTER_API_KEY", "")
-        logger.info("  API Key: %s", "✓ SET" if api_key else "✗ NOT SET")
+        logger.info("  API Key: %s", "SET" if api_key else "NOT SET")
     
     elif provider == "llamacpp":
         if not LLAMACPP_AVAILABLE:
-            logger.error("  ✗ llama-cpp-python NOT INSTALLED")
+            logger.error("  llama-cpp-python NOT INSTALLED")
             logger.error("  Install with: pip install llama-cpp-python")
         else:
-            logger.info("  ✓ llama-cpp-python available")
+            logger.info("  llama-cpp-python available")
             logger.info("  Context window: %s", os.getenv("LLAMACPP_N_CTX", "4096"))
             logger.info("  GPU layers: %s", os.getenv("LLAMACPP_N_GPU_LAYERS", "0 (CPU only)"))
 
@@ -1007,7 +1454,7 @@ if __name__ == "__main__":
         base_url = os.getenv("LLM_BASE_URL", "http://localhost:8090/v1")
         logger.info("  OpenAI-compatible URL: %s", base_url)
         api_key = os.getenv("LLM_API_KEY", "")
-        logger.info("  API Key: %s", "✓ SET" if api_key else "✗ NOT SET (optional)")
+        logger.info("  API Key: %s", "SET" if api_key else "NOT SET (optional)")
 
 
     logger.info("  WinDriver URL: %s", os.getenv("SUT_STATE_URL_WINDRIVER", "NOT SET"))

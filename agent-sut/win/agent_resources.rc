@@ -1,5 +1,0 @@
-// win/agent_resources.rc
-#include "resource.h"
-
-// ID                  TÜR      DOSYA YOLU
-IDR_WEB_AGENT_EXE      RCDATA   "../web/dist/web_agent.exe"

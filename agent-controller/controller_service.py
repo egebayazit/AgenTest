@@ -545,8 +545,10 @@ async def _call_ods_with_base64(b64: str) -> Dict[str, Any]:
         raise
 
 def _elements_from_ods_response(ods_raw: dict, screen: dict) -> list[dict]:
-    """Convert ODS response to element list"""
-    w, h = screen.get("w", 1920), screen.get("h", 1080)
+    """Convert ODS response to element list with high precision coordinate conversion"""
+    # Ekran boyutlarını float olarak alalım
+    w = float(screen.get("w", 1920))
+    h = float(screen.get("h", 1080))
     elements = []
     
     for item in ods_raw.get("parsed_content_list", []):
@@ -554,15 +556,21 @@ def _elements_from_ods_response(ods_raw: dict, screen: dict) -> list[dict]:
         bbox = item.get("bbox", [])
         if len(bbox) != 4: continue
         
-        # ODS returns normalized bbox [0-1000]
+        # ODS/OmniParser genellikle [y1, x1, y2, x2] veya [x1, y1, x2, y2] gönderir.
+        # Paylaştığın loglara göre format: [x1, y1, x2, y2] ve 0-1 arası float.
         x1, y1, x2, y2 = bbox
-        cx = (x1 + x2) / 2.0 * w
-        cy = (y1 + y2) / 2.0 * h
+        
+        # HATA DÜZELTME: Eğer değerler 0-1 arasındaysa doğrudan ekran boyutuyla çarpılır.
+        # Eğer değerler 0-1000 arasındaysa önce 1000'e bölünmelidir.
+        # OmniParser loguna göre (0.39...) değerler 0-1 arasındadır.
+        
+        cx = ((x1 + x2) / 2.0) * w
+        cy = ((y1 + y2) / 2.0) * h
         
         elements.append({
             "name": item.get("content") or "",
             "type": item.get("type"),
-            "center": {"x": float(cx), "y": float(cy)}
+            "center": {"x": round(cx, 1), "y": round(cy, 1)}
         })
     return elements
 
@@ -572,100 +580,131 @@ def _elements_from_ods_response(ods_raw: dict, screen: dict) -> list[dict]:
 
 def _format_compact_text_for_llm(elements: List[Dict[str, Any]]) -> str:
     """
-    Qwen/Llama Dostu Format: (x,y) [Type] Name
-    Koordinatları başa alarak modelin önce konumu algılamasını sağlar.
+    LLM Formatı: (x,y) [Type] Name | Value: val | ID: aid
     """
-    # Başlığı yeni formata uygun hale getiriyoruz
-    lines = ["Format: (x,y) [Type] Name"]
-    lines.append("-" * 40)
+    lines = ["Format: (x,y) [Type] Name | Value | AutomationID"]
+    lines.append("-" * 60)
     
-    for i, el in enumerate(elements):
+    for el in elements:
         c = el.get("center", {})
         cx, cy = int(c.get("x", 0)), int(c.get("y", 0))
+        etype = el.get("type", "ui")
         
-        # Tipi kısalt ve normalize et
-        etype = el.get("type", "ui").replace("statictext", "text").replace("imageview", "icon")
-        
-        # İsmi temizle ve kısalt
-        final_name = el.get("name", "").strip().replace("\n", " ")
-        if len(final_name) > 60: 
-            final_name = final_name[:57] + "..."
-            
-        if not final_name: 
-            continue
+        name = (el.get("name") or "").strip()
+        val = (el.get("value") or "").strip()
+        aid = (el.get("automationId") or "").strip()
 
-        # --- DEĞİŞİKLİK BURADA ---
-        # Eski: line = f"{etype} | {cx},{cy} | {final_name}"
-        # Yeni: (x,y) [type] name
-        line = f"({cx},{cy}) [{etype}] {final_name}"
+        # Bilgileri parça parça oluştur
+        parts = [f"[{etype}] {name if name else 'NoName'}"]
+        if val: 
+            # Değer çok uzunsa (örn uzun URL) LLM'i yormamak için kısaltıyoruz
+            short_val = (val[:47] + "...") if len(val) > 50 else val
+            parts.append(f"Value: {short_val}")
+        if aid: 
+            parts.append(f"ID: {aid}")
+        
+        content = " | ".join(parts)
+        line = f"({cx},{cy}) {content}"
         lines.append(line)
         
     return "\n".join(lines)
 
 def _dedupe_by_name_smart(elements: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict]:
     """
-    Unique Key: (Name, X, Y) - Prevents deleting same-name items at different locations.
+    Dedupe Mantığı:
+    1. Sadece (Name, X, Y) üçlüsü birebir aynıysa eleme yap.
+    2. Eğer aynı yerdeyse; name, automationId ve value alanlarından en dolu olanı tut.
+    3. Farklı koordinattaki aynı isimli elementlere dokunma (ikisi de kalsın).
     """
-    TYPE_PRIORITY = {"button": 1, "input": 2, "checkbox": 3, "list": 4, "text": 10, "icon": 11, "container": 20, "unknown": 99}
     unique_map = {}
     
     for el in elements:
+        # Verileri temizle
         name = (el.get("name") or "").strip()
-        if not name: continue
+        val = (el.get("value") or "").strip()
+        aid = (el.get("automationId") or "").strip()
         
+        # Koordinatları al
         c = el.get("center", {})
-        try: cx, cy = int(c.get("x", 0)), int(c.get("y", 0))
-        except: continue
+        try:
+            cx, cy = int(c.get("x", 0)), int(c.get("y", 0))
+        except:
+            continue
         
+        # KEY: İsim + Koordinat (Aynı isimli ama farklı yerdeki elementler farklı key alır)
         unique_key = (name, cx, cy)
-        el_type = _add_element_type_info(el)
-        el_prio = TYPE_PRIORITY.get(el_type, 99)
         
         if unique_key not in unique_map:
-            unique_map[unique_key] = (el_prio, el)
+            # Henüz bu isimde ve bu koordinatta bir element yok, ekle.
+            unique_map[unique_key] = el
         else:
-            curr_prio, _ = unique_map[unique_key]
-            if el_prio < curr_prio:
-                unique_map[unique_key] = (el_prio, el)
+            # AYNI YERDE AYNI İSİMLİ BİR ELEMENT VAR!
+            existing_el = unique_map[unique_key]
+            
+            # Doluluk puanı hesapla (Hangisinde daha çok bilgi var?)
+            # Name zaten key içinde olduğu için puanlamada Value ve ID kritik.
+            def get_score(e):
+                score = 0
+                if (e.get("name") or "").strip(): score += 1
+                if (e.get("automationId") or "").strip(): score += 1
+                if (e.get("value") or "").strip(): score += 2  # Value genelde en ayırt edici veridir (URL vb.)
+                return score
+
+            new_score = get_score(el)
+            old_score = get_score(existing_el)
+            
+            # Eğer yeni gelen daha doluysa eskisinin yerine yaz
+            if new_score > old_score:
+                unique_map[unique_key] = el
+            # Puanlar eşitse ControlType önceliğine bak (opsiyonel, Hyperlink genelde daha iyidir)
+            elif new_score == old_score:
+                if str(el.get("controlType")).lower() == "hyperlink":
+                    unique_map[unique_key] = el
                 
-    result = [val[1] for val in unique_map.values()]
+    result = list(unique_map.values())
     return result, {"dedupe_count": len(elements) - len(result)}
 
 def _finalize_elements_for_llm(elements: List[Dict[str, Any]], screen: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Creates hybrid output: Structured list + Text block."""
     temp_elements = []
-    BLACKLIST = {"rectangle", "line", "m0,0l9,5", "rounded rectangle", "group", "path", "0,0"}
+    # Blacklist'i sadece koordinat hatası için bıraktık
+    BLACKLIST = {"0,0"} 
     
     for el in elements or []:
-        # Selection: Name > OCR > Icon
-        original_name = (el.get("name") or "").strip()
-        ocr_name = (el.get("name_ocr") or "").strip()
-        icon_name = _normalized_name_from_icon(el)
+        # Ham verileri topla
+        raw_name = (el.get("name") or "").strip()
+        val = (el.get("value") or "").strip()
+        aid = (el.get("automationId") or "").strip()
         
-        final_name = original_name or ocr_name or icon_name
-        
-        if not final_name: continue
-        if final_name.lower() in BLACKLIST: continue
+        # Name boşsa OCR veya Icon denemesini buraya sakla
+        name = raw_name or (el.get("name_ocr") or "").strip() or _normalized_name_from_icon(el) or ""
+
+        # KURAL: En az bir tanesi dolu mu?
+        if not any([name, val, aid]):
+            continue
+            
+        # Blacklist kontrolü
+        if any(x.lower() in BLACKLIST for x in [name, val, aid]):
+            continue
         
         rect = _rect_from_element(el, screen)
         center = _center_from_element(el, rect)
-        if not center: continue
+        if not center: 
+            continue
         
+        # LLM element objesini oluştur
         temp_el = {
-            "name": final_name,
-            "center": center,
-            "type": _add_element_type_info(el)
+            "name": name,
+            "value": val,
+            "automationId": aid,
+            "type": _add_element_type_info(el),
+            "center": center
         }
         temp_elements.append(temp_el)
     
-    structured_list = []
-    for el in temp_elements:
-        structured_list.append({
-            "name": el["name"],
-            "type": el["type"],
-            "center": el["center"]
-        })
+    # JSON yapısını bozmadan listeyi ata
+    structured_list = temp_elements 
 
+    # LLM metin görünümünü oluştur
     compact_view = _format_compact_text_for_llm(structured_list)
 
     return {
@@ -743,32 +782,37 @@ async def state_from_ods():
     if not b64:
         raise HTTPException(400, "No screenshot in SUT state")
 
+    # --- GENEL GEÇER ÇÖZÜM: RESMİN GERÇEK BOYUTLARINI AL ---
+    img_bytes = base64.b64decode(b64)
+    with Image.open(io.BytesIO(img_bytes)) as img:
+        actual_w, actual_h = img.size
+    actual_screen = {"w": actual_w, "h": actual_h}
+    # -----------------------------------------------------
+
     try:
         t_ods_start = time.time()
         ods_data = await _call_ods_with_base64(b64)
         print(f"[/state/from-ods] ODS call took {time.time() - t_ods_start:.2f}s")
+        
         if not ods_data or not ods_data.get("parsed_content_list"):
              raise HTTPException(502, "ODS returned empty data")
             
-        screen = raw.get("screen") or {"w":1920, "h":1080}
-        ods_elements = _elements_from_ods_response(ods_data, screen)
+        # Hesaplamayı resmin gerçek boyutlarına (actual_screen) göre yapıyoruz
+        ods_elements = _elements_from_ods_response(ods_data, actual_screen)
         
-        # --- GÜNCELLEME: KOORDİNAT YUVARLAMA (Token Tasarrufu) ---
-        # Küsuratlı float değerleri (örn: 872.854...) tam sayıya (872) çeviriyoruz.
+        # Koordinat yuvarlama (Token tasarrufu ve hassasiyet dengesi)
         for el in ods_elements:
             if "center" in el:
                 el["center"]["x"] = int(el["center"]["x"])
                 el["center"]["y"] = int(el["center"]["y"])
-        # ---------------------------------------------------------
-
-        # Enrichment (optional for ODS)
-        # _enrich_with_icons_yolo(raw, ods_elements, {})
 
         if not INCLUDE_DUPLICATES_FOR_LLM:
              ods_elements, _ = _dedupe_by_name_smart(ods_elements)
 
         t_finalize_start = time.time()
-        result = _finalize_elements_for_llm(ods_elements, screen)
+        # Finalize ederken de gerçek boyutları kullanıyoruz
+        result = _finalize_elements_for_llm(ods_elements, actual_screen)
+        
         print(f"[/state/from-ods] finalize took {time.time() - t_finalize_start:.2f}s")
         print(f"[/state/from-ods] TOTAL TIME: {time.time() - t_endpoint_start:.2f}s")
         return result

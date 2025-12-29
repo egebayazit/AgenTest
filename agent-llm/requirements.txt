@@ -14,3 +14,10 @@ pydantic>=2.7,<3
 
 # ui
 streamlit>=1.36.0
+
+# LLM providers
+anthropic>=0.45.0
+google-genai>=1.0.0
+
+# Security (API key encryption)
+cryptography>=41.0.0

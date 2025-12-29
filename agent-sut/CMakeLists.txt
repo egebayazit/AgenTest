@@ -16,7 +16,6 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/action
   ${CMAKE_CURRENT_SOURCE_DIR}/win
   ${CMAKE_CURRENT_SOURCE_DIR}/jvm
-  ${CMAKE_CURRENT_SOURCE_DIR}/web
 )
 
 if (WIN32)
@@ -75,7 +74,6 @@ string(REPLACE "\\" "\\\\" JVM_JAR_RC_PATH "${JVM_JAR_NATIVE_PATH}")
 file(TO_NATIVE_PATH "${JVM_RUNTIME_ZIP}" JVM_RUNTIME_NATIVE_PATH)
 string(REPLACE "\\" "\\\\" JVM_RUNTIME_RC_PATH "${JVM_RUNTIME_NATIVE_PATH}")
 configure_file("${JVM_DIR}/jvm_agent.rc.in" "${JVM_AGENT_RC}" @ONLY)
-set(AGENT_RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/win/agent_resources.rc")
 
 add_executable(agent_sut
   server_main.cpp
@@ -85,8 +83,6 @@ add_executable(agent_sut
   win/capture.cpp
   win/base64.cpp
   jvm/jvm_bridge.cpp
-  web/web_bridge.cpp
-  ${AGENT_RESOURCES}
 )
 
 target_sources(agent_sut PRIVATE "${JVM_AGENT_RC}")

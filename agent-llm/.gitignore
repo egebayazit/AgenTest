@@ -1,30 +1,23 @@
-.env
-# Models
-agent-llm/models/
-*.gguf
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
 
-# LLM binaries
-agent-llm/llama-server/*.exe
-agent-llm/llama-server/*.dll
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Models & binaries
+models/
+llama-server/
+*.gguf
+*.exe
+*.dll
 
 # Local configs
 .env
 .vscode/
 
-# Python cache
-__pycache__/
-*.pyc
-
-# Models & binaries
-agent-llm/models/
-agent-llm/llama-server/
-*.gguf
-*.exe
-*.dll
-
-# Local / dev
-.env
-.vscode/
-
-# Generated / local tools
-agent-llm/saved_tests/
+# Generated data
+saved_tests/

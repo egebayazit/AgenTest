@@ -117,7 +117,7 @@ def get_image_size(base64_string):
     image = Image.open(io.BytesIO(image_data))
     return image.size
 
-@app.post("/parse/")
+@app.post("/parse")
 async def parse(parse_request: ParseRequest):
     print('start parsing...')
     start = time.time()
