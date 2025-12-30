@@ -6,7 +6,7 @@
 [![LangChain](https://img.shields.io/badge/LangChain-Orchestration-EF2D5E?style=for-the-badge)](https://langchain.com/)
 [![Status](https://img.shields.io/badge/Status-Production%20Grade-success?style=for-the-badge)]()
 
-> **Note:** This project was developed as a flagship R&D initiative during my long-term Co-op at **Havelsan** (Defense Industry). It represents a hybrid approach to test automation, combining Computer Vision with LLM-based decision making.
+> **Note:** This project was developed as a flagship R&D initiative during our long-term Co-op at **Havelsan** (Defense Industry). It represents a hybrid approach to test automation, combining Computer Vision with LLM-based decision making.
 
 ## 🚀 Overview
 
